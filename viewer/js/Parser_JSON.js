@@ -217,10 +217,10 @@ export function parseJSONLog(jsonString) {
                 const sid = pArr[i];
                 if (isObjMode) {
                     scores[sid] = {
-                        score: pArr[i + 1],
-                        obj: pArr[i + 2],
-                        kills: pArr[i + 3],
-                        deaths: 0 // Hardpoint doesn't send deaths
+                        score: pArr[i + 2],
+                        obj: pArr[i + 1],
+                        kills: pArr[i + 3]
+                        // deaths is intentionally omitted for obj mode
                     };
                 } else {
                     scores[sid] = {

@@ -45,31 +45,34 @@ export function computeDynamicStats(timeMs) {
             isObjMode = firstScoreboard.isObjMode;
         }
 
+        // Always count kills/deaths from kill events first (since POINT mode doesn't provide deaths)
+        Shared.events.forEach(e => {
+            if (e.timestamp <= timeMs && e.type === 'kill') {
+                const kKey = String(e.killer);
+                const vKey = String(e.victim);
+                if (dynamicStats[kKey]) {
+                    dynamicStats[kKey].kills++;
+                    dynamicStats[kKey].score += e.headshot ? 100 : 50;
+                }
+                if (dynamicStats[vKey]) {
+                    dynamicStats[vKey].deaths++;
+                }
+            }
+        });
+
+        // Override with official scoreboard values if available
         if (latestScoreboard) {
             for (const sid in latestScoreboard.scores) {
                 const key = String(sid);
                 if (!dynamicStats[key]) {
                     dynamicStats[key] = { id: Number(sid), pName: `Player ${sid}`, team: 0, kills: 0, deaths: 0, score: 0, obj: 0 };
                 }
-                dynamicStats[key].score  = latestScoreboard.scores[sid].score  || 0;
-                dynamicStats[key].kills  = latestScoreboard.scores[sid].kills  || 0;
-                dynamicStats[key].deaths = latestScoreboard.scores[sid].deaths || 0;
-                dynamicStats[key].obj    = latestScoreboard.scores[sid].obj    || 0;
+                const pScore = latestScoreboard.scores[sid];
+                if (pScore.score !== undefined) dynamicStats[key].score = pScore.score;
+                if (pScore.kills !== undefined) dynamicStats[key].kills = pScore.kills;
+                if (pScore.deaths !== undefined) dynamicStats[key].deaths = pScore.deaths;
+                if (pScore.obj !== undefined) dynamicStats[key].obj = pScore.obj;
             }
-        } else {
-            Shared.events.forEach(e => {
-                if (e.timestamp <= timeMs && e.type === 'kill') {
-                    const kKey = String(e.killer);
-                    const vKey = String(e.victim);
-                    if (dynamicStats[kKey]) {
-                        dynamicStats[kKey].kills++;
-                        dynamicStats[kKey].score += e.headshot ? 100 : 50;
-                    }
-                    if (dynamicStats[vKey]) {
-                        dynamicStats[vKey].deaths++;
-                    }
-                }
-            });
         }
     }
 

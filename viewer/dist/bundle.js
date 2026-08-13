@@ -125,31 +125,31 @@
         latestScoreboard = firstScoreboard;
         isObjMode = firstScoreboard.isObjMode;
       }
+      Shared.events.forEach((e) => {
+        if (e.timestamp <= timeMs && e.type === "kill") {
+          const kKey = String(e.killer);
+          const vKey = String(e.victim);
+          if (dynamicStats[kKey]) {
+            dynamicStats[kKey].kills++;
+            dynamicStats[kKey].score += e.headshot ? 100 : 50;
+          }
+          if (dynamicStats[vKey]) {
+            dynamicStats[vKey].deaths++;
+          }
+        }
+      });
       if (latestScoreboard) {
         for (const sid in latestScoreboard.scores) {
           const key = String(sid);
           if (!dynamicStats[key]) {
             dynamicStats[key] = { id: Number(sid), pName: `Player ${sid}`, team: 0, kills: 0, deaths: 0, score: 0, obj: 0 };
           }
-          dynamicStats[key].score = latestScoreboard.scores[sid].score || 0;
-          dynamicStats[key].kills = latestScoreboard.scores[sid].kills || 0;
-          dynamicStats[key].deaths = latestScoreboard.scores[sid].deaths || 0;
-          dynamicStats[key].obj = latestScoreboard.scores[sid].obj || 0;
+          const pScore = latestScoreboard.scores[sid];
+          if (pScore.score !== void 0) dynamicStats[key].score = pScore.score;
+          if (pScore.kills !== void 0) dynamicStats[key].kills = pScore.kills;
+          if (pScore.deaths !== void 0) dynamicStats[key].deaths = pScore.deaths;
+          if (pScore.obj !== void 0) dynamicStats[key].obj = pScore.obj;
         }
-      } else {
-        Shared.events.forEach((e) => {
-          if (e.timestamp <= timeMs && e.type === "kill") {
-            const kKey = String(e.killer);
-            const vKey = String(e.victim);
-            if (dynamicStats[kKey]) {
-              dynamicStats[kKey].kills++;
-              dynamicStats[kKey].score += e.headshot ? 100 : 50;
-            }
-            if (dynamicStats[vKey]) {
-              dynamicStats[vKey].deaths++;
-            }
-          }
-        });
       }
     }
     return { dynamicStats, isObjMode };
@@ -1378,11 +1378,10 @@
           const sid = pArr[i];
           if (isObjMode) {
             scores[sid] = {
-              score: pArr[i + 1],
-              obj: pArr[i + 2],
-              kills: pArr[i + 3],
-              deaths: 0
-              // Hardpoint doesn't send deaths
+              score: pArr[i + 2],
+              obj: pArr[i + 1],
+              kills: pArr[i + 3]
+              // deaths is intentionally omitted for obj mode
             };
           } else {
             scores[sid] = {
