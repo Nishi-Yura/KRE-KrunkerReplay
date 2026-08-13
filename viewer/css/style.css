@@ -1,0 +1,327 @@
+:root {
+  --bg-color: #0a0a0f;
+  --accent-cyan: #00d4ff;
+  --accent-red: #ff3366;
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: var(--bg-color);
+  font-family: 'Inter', 'Roboto', sans-serif;
+  color: white;
+  user-select: none;
+}
+
+/* 3Dキャンバス */
+#canvas-container {
+  position: absolute;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  z-index: 1;
+}
+
+/* グラスモーフィズム共通 */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+/* UIレイヤー */
+#ui-layer {
+  position: absolute;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  z-index: 10;
+  pointer-events: none; /* 下の3D操作を通す */
+}
+
+.panel {
+  pointer-events: auto; /* UI部品は操作可能に */
+}
+
+/* トップバー */
+#top-bar {
+  position: absolute;
+  top: 10px; right: 10px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  background: rgba(255,255,255,0.1);
+  color: white;
+  border: 1px solid var(--glass-border);
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+button:hover {
+  background: rgba(255,255,255,0.2);
+  border-color: var(--accent-cyan);
+}
+
+/* サイドバー (プレイヤーリスト) */
+#sidebar {
+  position: absolute;
+  top: 50px; left: 10px;
+  width: 200px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.player-card {
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  border-left: 4px solid transparent;
+}
+
+.player-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.player-card.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-left: 4px solid #fff;
+}
+
+.player-color-box {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+}
+
+/* ミニマップ */
+#minimap-container {
+  position: absolute;
+  bottom: 80px; right: 10px;
+  width: 200px; height: 200px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+#minimap {
+  width: 100%; height: 100%;
+}
+
+/* タイムライン */
+#timeline-container {
+  position: absolute;
+  bottom: 10px; left: 10px; right: 10px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  gap: 15px;
+}
+
+#playback-controls {
+  display: flex;
+  gap: 5px;
+}
+
+#timeline-bar {
+  flex-grow: 1;
+  height: 10px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 5px;
+  position: relative;
+  cursor: pointer;
+}
+
+#playhead {
+  position: absolute;
+  top: -5px; left: 0%;
+  width: 20px; height: 20px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.kill-marker {
+  position: absolute;
+  top: 2px;
+  width: 6px; height: 6px;
+  background: var(--accent-red);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* 中央再生/停止インジケーター */
+#play-pause-indicator {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 80px;
+  color: rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  z-index: 2000;
+  opacity: 0;
+}
+
+@keyframes popOut {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+
+/* ドラッグ&ドロップ オーバーレイ */
+#drop-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.8);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  display: none;
+  pointer-events: none; /* これで点滅バグが完全に直る */
+}
+
+/* スコアボード */
+#scoreboard {
+  position: absolute;
+  top: 10%; left: 10%; width: 80%; height: 80%;
+  z-index: 50;
+  display: none;
+  padding: 20px;
+}
+
+/* トースト通知 (Toast) */
+#toast-container {
+  position: absolute;
+  top: 70px; right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 2000;
+}
+
+.toast {
+  padding: 10px 20px;
+  background: rgba(255, 51, 102, 0.8); /* Red/Error by default */
+  color: white;
+  border-radius: 4px;
+  font-weight: 600;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  animation: slideIn 0.3s ease-out forwards, fadeOut 0.3s ease-in 3.7s forwards;
+  backdrop-filter: blur(5px);
+}
+
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+.show { display: flex !important; }
+
+/* モーダル (Help / Landing) */
+.modal-overlay {
+  position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.modal-overlay.active {
+  opacity: 1; pointer-events: auto;
+}
+
+.modal-content {
+  background: rgba(20, 20, 25, 0.9);
+  border: 1px solid var(--glass-border);
+  padding: 30px;
+  border-radius: 12px;
+  width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  position: relative;
+}
+
+.modal-content h2 { margin-top: 0; color: var(--accent-cyan); }
+
+.close-btn {
+  position: absolute; top: 10px; right: 15px;
+  cursor: pointer; font-size: 20px; color: #888;
+}
+.close-btn:hover { color: #fff; }
+
+/* 初期画面のドロップエリア */
+#landing-box {
+  border: 2px dashed rgba(0, 212, 255, 0.5);
+  border-radius: 8px;
+  padding: 40px 20px;
+  background: rgba(0, 212, 255, 0.05);
+  margin: 20px 0;
+  transition: background 0.3s, border-color 0.3s;
+}
+#landing-box.dragover {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: #00d4ff;
+}
+
+/* キーボードのキー装飾 */
+kbd {
+  background: #333; border-radius: 4px; padding: 2px 6px;
+  font-family: monospace; font-size: 12px; color: #fff;
+  border-bottom: 2px solid #111;
+  margin: 0 2px;
+}
+.controls-list {
+  text-align: left; line-height: 1.8; font-size: 14px;
+  margin-top: 20px;
+}
+
+.nametag {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  text-align: center;
+  z-index: 5;
+  will-change: transform;
+}
+.nametag-name {
+  background: rgba(0,0,0,0.6);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  text-shadow: none;
+  margin-bottom: 2px;
+  display: inline-block;
+}
+.nametag-hp-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255,0,0,0.5);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.nametag-hp-fill {
+  height: 100%;
+  background: #00ff00;
+  transition: width 0.1s;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "krunker-replay",
+  "version": "1.0.0",
+  "description": "Krunker 3D Replay Tool",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "recorder",
+    "installer",
+    "viewer",
+    "converter"
+  ],
+  "scripts": {
+    "install:client": "node installer/src/sideloader.js install",
+    "uninstall:client": "node installer/src/sideloader.js uninstall",
+    "viewer": "cd viewer && npx http-server . -p 3000 -o -c-1",
+    "convert:map": "node converter/src/kre_map_converter.js"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.1.3"
+  }
+}

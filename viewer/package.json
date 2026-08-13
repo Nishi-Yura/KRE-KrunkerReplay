@@ -1,0 +1,13 @@
+{
+  "name": "@krunker-replay/viewer",
+  "version": "1.0.0",
+  "description": "Krunker Replay 3D Viewer",
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "http-server": "^14.1.1"
+  },
+  "dependencies": {
+    "msgpackr": "^2.0.5"
+  }
+}

@@ -1,0 +1,392 @@
+import { State, Shared, base64ToUint8Array } from './State.js';
+import { showToast } from './UI.js';
+import { setupRealPlayers } from './Renderer_Players.js';
+import { parseMapJSON } from './Parser_Map.js';
+
+export function parseJSONLog(jsonString) {
+  let data = [];
+  try {
+    data = JSON.parse(jsonString);
+  } catch(e) {
+    showToast('JSONのパースに失敗しました');
+    return false;
+  }
+  
+  if (!data || !data.length) return false;
+  
+  if (data[0] && data[0].version) {
+      Shared.replayHeader = data.shift();
+  }
+  
+  Shared.realFrames = [];
+  Shared.events = [];
+  const playersMap = {}; 
+  let maxTime = 0;
+  let minTime = Infinity;
+  
+  // First pass: collect all timestamps to find minTime
+  data.forEach(ev => {
+      const t = ev[0];
+      if (typeof t === 'number') {
+          if (t > maxTime) maxTime = t;
+          if (t < minTime) minTime = t;
+      }
+  });
+  
+  // Track which IDs have received 'k' packets (real position data)
+  const hasKPacket = {};
+  // Track last frame push time to avoid duplicate frames
+  let lastFrameTime = -1;
+  
+  const pushFrame = (t) => {
+      const ts = t - minTime;
+      if (ts === lastFrameTime) return; // Skip duplicate timestamps
+      lastFrameTime = ts;
+      const currentFramePlayers = Object.values(playersMap)
+          .filter(p => p.hasSpawned)
+          .map(p => JSON.parse(JSON.stringify(p)));
+      Shared.realFrames.push({ timestamp: ts, players: currentFramePlayers });
+  };
+
+  const processPayload = (t, payload, ev) => {
+      if (!Array.isArray(payload)) return;
+      
+      const op = payload[0];
+      
+      if (op === 'kre_map_data' && payload[1]) {
+          parseMapJSON(JSON.stringify(payload[1]));
+      }
+      // ===== 0-packet: Player metadata (name, team, etc.) =====
+      // Structure: [accountId, playerId, posX, posY, posZ, name, level, hp, maxHp, team, ...]
+      // Stride = 51 (confirmed from data analysis)
+      else if (op === '0' && payload[1]) {
+          const pArr = payload[1];
+          const stride = 51;
+          for (let i = 0; i + 9 <= pArr.length; i += stride) {
+              const sid = pArr[i+1];
+              if (sid === undefined) continue;
+              if (!playersMap[sid]) {
+                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, isValid: false };
+              }
+              if (pArr[i+5]) {
+                  playersMap[sid].name = pArr[i+5];
+                  playersMap[sid].isValid = true; // They have a real name, so they are a valid player!
+              }
+              if (pArr[i+6] !== undefined && pArr[i+6] !== null) {
+                  playersMap[sid].classId = pArr[i+6];
+                  playersMap[sid].isValid = true;
+              }
+              if (pArr[i+7]) playersMap[sid].maxHealth = pArr[i+7];
+              if (pArr[i+8] !== undefined) playersMap[sid].health = pArr[i+8];
+              if (pArr[i+9] !== undefined) playersMap[sid].team = pArr[i+9];
+          }
+      }
+      // ===== k-packet: Player position/state updates =====
+      else if (op === 'k' && payload[1]) {
+          const pArr = payload[1];
+          // Auto-detect stride
+          let stride = 13;
+          for (const s of [14, 13, 15, 12, 11, 10, 16]) {
+              if (pArr.length > 0 && pArr.length % s === 0) {
+                  let valid = true;
+                  for (let i = 0; i < pArr.length; i += s) {
+                      if (typeof pArr[i] !== 'number' && typeof pArr[i] !== 'string') valid = false;
+                      if (typeof pArr[i+1] !== 'number') valid = false;
+                      if (typeof pArr[i+2] !== 'number') valid = false;
+                  }
+                  if (valid) {
+                      stride = s;
+                      break;
+                  }
+              }
+          }
+          for (let i = 0; i < pArr.length; i += stride) {
+              const sid = pArr[i];
+              if (sid === undefined) continue;
+              hasKPacket[sid] = true;
+              
+              if (!playersMap[sid]) {
+                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, isValid: false };
+              }
+              playersMap[sid].hasSpawned = true;
+              playersMap[sid].pos = [pArr[i+1], pArr[i+2], pArr[i+3]];
+              const yaw = pArr[i+4] * Math.PI / 180;
+              const pitch = pArr[i+5] * Math.PI / 180;
+              playersMap[sid].rot = [yaw, pitch];
+              
+              playersMap[sid].aim = !!pArr[i+8];
+          }
+          pushFrame(t);
+      }
+      // ===== ai-packet: AI/other player positions =====
+      else if (op === 'ai' && payload.length > 1) {
+          const pArr = Array.isArray(payload[1]) ? payload[1] : payload.slice(1);
+          for (let i = 0; i < pArr.length; i += 9) {
+              const sid = pArr[i];
+              if (sid === undefined) continue;
+              // Skip players that already have k-packet data (higher quality)
+              if (hasKPacket[sid]) continue;
+              
+              if (!playersMap[sid]) {
+                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0,0,0], rot: [0,0], hasSpawned: false, maxHealth: 100, shoot: false };
+              }
+              // AI players should be spawned and visible
+              playersMap[sid].hasSpawned = true;
+              playersMap[sid].pos = [pArr[i+1], pArr[i+2], pArr[i+3]];
+              const yaw = pArr[i+4] * Math.PI / 180;
+              const pitch = pArr[i+5] * Math.PI / 180;
+              playersMap[sid].rot = [yaw, pitch];
+          }
+          // Always push frame for ai updates (override lastFrameTime dedup)
+          lastFrameTime = -1; // Reset to force push
+          pushFrame(t);
+      }
+      // ===== h-packet: Health update =====
+      else if (op === 'h') {
+          const hp = payload[1];
+          let sid = payload[2];
+          if (typeof hp !== 'number') return;
+          
+          if (sid === null || sid === undefined) sid = 0;
+          
+          if (!playersMap[sid]) {
+              playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false };
+          }
+          playersMap[sid].health = hp;
+          if (hp > 0) {
+              playersMap[sid].maxHealth = Math.max(playersMap[sid].maxHealth || 100, hp);
+          }
+          // Push frame only if player is spawned (avoid phantom frames)
+          if (playersMap[sid].hasSpawned) pushFrame(t);
+      }
+      // ===== 3-packet: Kill event =====
+      else if (op === '3' && payload.length >= 4) {
+          const killer = payload[1];
+          const victim = payload[3];
+          // payload[5] may contain { hs: true/false } for headshot info
+          const meta = (payload.length >= 6 && payload[5] && typeof payload[5] === 'object') ? payload[5] : {};
+          const headshot = !!meta.hs;
+          
+          Shared.events.push({
+              timestamp: t, // Keep original t, normalized at end of parser
+              type: 'kill',
+              victim: victim,
+              killer: killer,
+              headshot: headshot
+          });
+          
+          // Set victim health to 0
+          if (playersMap[victim]) {
+              playersMap[victim].health = 0;
+          }
+          pushFrame(t);
+      }
+      // ===== 5-packet: Score/Respawn notification =====
+      else if (op === '5') {
+          // This indicates local player scored / respawned
+          // payload: ['5', score, ?, ?, team]
+      }
+      // ===== 7-packet: Scoreboard update =====
+      else if (op === '7' && Array.isArray(payload[1])) {
+          const pArr = payload[1];
+          const scores = {};
+          let isObjMode = false;
+          // Check heuristic for POINT mode (Hardpoint)
+          for (let i = 0; i < pArr.length; i += 4) {
+              if (pArr[i+2] * 50 > pArr[i+1]) {
+                  isObjMode = true;
+                  break;
+              }
+          }
+          for (let i = 0; i < pArr.length; i += 4) {
+              const sid = pArr[i];
+              if (isObjMode) {
+                  scores[sid] = {
+                      score: pArr[i+1],
+                      obj: pArr[i+2],
+                      kills: pArr[i+3],
+                      deaths: 0 // Hardpoint doesn't send deaths
+                  };
+              } else {
+                  scores[sid] = {
+                      score: pArr[i+1],
+                      kills: pArr[i+2],
+                      deaths: pArr[i+3],
+                      obj: 0
+                  };
+              }
+          }
+          
+          Shared.events.push({
+              timestamp: t,
+              type: 'scoreboard',
+              scores: scores,
+              isObjMode: isObjMode
+          });
+      }
+      // ===== crsp-packet: Respawn with position =====
+      else if (op === 'crsp') {
+          // crsp: ['crsp', ?, respawnId, posX, posY, posZ, team, ?]
+          // This is for the local player (self) respawning
+          // Reset HP to 100 for players that just died
+          Object.values(playersMap).forEach(p => {
+              if (p.health <= 0) {
+                  p.health = 100;
+              }
+          });
+      }
+      // ===== l-packet: Projectile data =====
+      else if (op === 'l' && Array.isArray(payload[1])) {
+          const pArr = payload[1];
+          const projs = [];
+          let stride = 10;
+          if (pArr.length > 0) {
+              if (pArr.length % 26 === 0) stride = 26;
+              else if (pArr.length % 10 === 0) stride = 10;
+              else stride = pArr.length; // fallback
+          }
+          
+          for (let i = 0; i < pArr.length; i += stride) {
+              projs.push({
+                  id: pArr[i],
+                  ownerId: pArr[i+1],
+                  pos: [pArr[i+2], pArr[i+3], pArr[i+4]],
+                  dirVec: [pArr[i+5], pArr[i+6], pArr[i+7]]
+              });
+          }
+          const currentFramePlayers = Object.values(playersMap)
+              .filter(p => p.hasSpawned)
+              .map(p => JSON.parse(JSON.stringify(p)));
+          Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
+      }
+      else if (op === 'l_parsed' && payload.length > 1) {
+          const projs = payload[1];
+          const currentFramePlayers = Object.values(playersMap)
+              .filter(p => p.hasSpawned)
+              .map(p => JSON.parse(JSON.stringify(p)));
+          Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
+      }
+      else if (ev && ev[2] === true && op === 'en') {
+          const pData = payload[1];
+          if (Array.isArray(pData) && pData.length >= 7) {
+              if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, hasSpawned: true, maxHealth: 100, aim: false, isValid: true };
+              playersMap[0].hasSpawned = true;
+              let px = pData[4]; let py = pData[5]; let pz = pData[6];
+              if (typeof px === 'number' && typeof py === 'number' && typeof pz === 'number') {
+                  playersMap[0].pos = [px, py, pz];
+                  let pitch = pData[1]; let yaw = pData[2];
+                  if (typeof pitch === 'number' && typeof yaw === 'number') playersMap[0].rot = [yaw, pitch];
+                  playersMap[0].health = playersMap[0].health || 100;
+                  playersMap[0].maxHealth = Math.max(playersMap[0].maxHealth || 100, playersMap[0].health);
+                  pushFrame(t);
+              }
+          }
+      }
+      else if (op === 'kre_local') {
+          if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, hasSpawned: true, maxHealth: 100, aim: false, isValid: true };
+          playersMap[0].hasSpawned = true;
+          playersMap[0].pos = [payload[1], payload[2], payload[3]];
+          playersMap[0].rot = [payload[4], payload[5]];
+          playersMap[0].health = payload[6];
+          playersMap[0].maxHealth = Math.max(playersMap[0].maxHealth || 100, payload[6]);
+          pushFrame(t);
+      }
+      else if (op === 'd') {
+          const sid = payload[1];
+          if (playersMap[sid]) {
+              playersMap[sid].health = 0;
+          }
+      }
+  };
+
+  data.forEach(ev => {
+      const t = ev[0];
+      let payload = ev[1];
+      if (!payload) return;
+      
+      if (typeof payload === 'string') {
+          try {
+              const bytes = base64ToUint8Array(payload);
+              const iter = MessagePack.decodeMulti(bytes);
+              for (const p of iter) {
+                  processPayload(t, p, ev);
+              }
+          } catch(e) { }
+      } else {
+          processPayload(t, payload, ev);
+      }
+  });
+  
+  if (Shared.realFrames.length > 0) {
+      // BACKFILL: propagate best-known name and team to ALL frames
+      const finalInfo = {};
+      // First pass: collect from playersMap (has 0-packet info)
+      Object.values(playersMap).forEach(p => {
+          const key = String(p.id);
+          if (!finalInfo[key]) finalInfo[key] = { name: null, team: null };
+          if (p.name) {
+              // Prefer real names over Guest_ names
+              if (!p.name.startsWith('Guest_') && !p.name.startsWith('Player ')) {
+                  finalInfo[key].name = p.name;
+              } else if (!finalInfo[key].name) {
+                  finalInfo[key].name = p.name; // Keep Guest_ as fallback
+              }
+          }
+          if (p.team) finalInfo[key].team = p.team;
+      });
+      // Second pass: collect from frames (may have better info)
+      Shared.realFrames.forEach(f => {
+          f.players.forEach(p => {
+              const key = String(p.id);
+              if (!finalInfo[key]) finalInfo[key] = { name: null, team: null };
+              if (p.name) {
+                  if (!p.name.startsWith('Guest_') && !p.name.startsWith('Player ')) {
+                      finalInfo[key].name = p.name;
+                  } else if (!finalInfo[key].name) {
+                      finalInfo[key].name = p.name;
+                  }
+              }
+              if (p.team) finalInfo[key].team = p.team;
+          });
+      });
+      // Apply backfill to all frames and filter out players who were never valid (never received a 0-packet)
+      Shared.realFrames.forEach(f => {
+          f.players = f.players.filter(p => {
+              const info = finalInfo[String(p.id)];
+              const isLocal = (p.id === 0);
+              const isValid = isLocal || (playersMap[p.id] && playersMap[p.id].isValid);
+              return isValid;
+          });
+          
+          f.players.forEach(p => {
+              const key = String(p.id);
+              const info = finalInfo[key];
+              if (info) {
+                  if (info.name) p.name = info.name;
+                  if (info.team) p.team = info.team;
+              }
+          });
+      });
+      Shared.playerInfo = finalInfo;
+      
+      // Sort frames by timestamp
+      Shared.realFrames.sort((a, b) => a.timestamp - b.timestamp);
+      
+      if (Shared.events) {
+          Shared.events.forEach(e => e.timestamp -= minTime);
+          Shared.events.sort((a, b) => a.timestamp - b.timestamp);
+      }
+      
+      State.duration = (maxTime - minTime) / 1000;
+      State.time = 0;
+      State.mode = 'real';
+      setupRealPlayers();
+      showToast(`ロード完了: ${Shared.realFrames.length} フレーム / ${Object.keys(playersMap).length} プレイヤー`, 'success');
+      const landingModal = document.getElementById('landing-modal');
+      if (landingModal) landingModal.classList.remove('active');
+      return true;
+  } else {
+      showToast('エラー: 座標データ(k)が見つかりません');
+      return false;
+  }
+}

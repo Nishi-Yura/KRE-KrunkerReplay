@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Krunker Replay 3D Viewer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="nametags-layer" style="position: absolute; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:5;"></div>
+
+  <div id="ui-layer">
+    <div id="top-bar" class="panel glass">
+      <button id="btn-help" style="background: rgba(0,212,255,0.2); border-color: #00d4ff;">? ヘルプ</button>
+      <button id="cam-free">自由視点(F)</button>
+      <button id="cam-1st">1人称(1)</button>
+      <button id="cam-3rd">3人称(3)</button>
+      <select id="speed-select" style="background:transparent;color:white;border:1px solid #fff;border-radius:4px;">
+        <option value="0.25">0.25x</option>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1.0x</option>
+        <option value="2">2.0x</option>
+        <option value="4">4.0x</option>
+      </select>
+    </div>
+
+    <div id="sidebar" class="panel glass">
+      <div style="font-weight:600; margin-bottom:5px;">プレイヤーリスト</div>
+      <div id="player-list-content"></div>
+    </div>
+
+    <div id="minimap-container" class="panel glass">
+      <canvas id="minimap"></canvas>
+    </div>
+
+    <div id="timeline-container" class="panel glass">
+      <div id="playback-controls">
+        <button id="btn-play-pause">Pause</button>
+      </div>
+      <div id="time-display" style="min-width: 90px; text-align: right; font-family: monospace; font-size: 14px;">00:00 / 00:00</div>
+      <div id="timeline-bar">
+        <div id="playhead"></div>
+      </div>
+    </div>
+    
+    <div style="position: absolute; bottom: 80px; left: 10px; font-size: 12px; color: #aaa; pointer-events: none; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px;">
+      Space: 再生/停止 | 矢印: スキップ | ドラッグ: 視点移動
+    </div>
+    
+    <div id="play-pause-indicator"></div>
+    
+    <div id="scoreboard" class="panel glass">
+      <h2>Scoreboard</h2>
+      <p>※ Tabキーで表示・非表示</p>
+    </div>
+  </div>
+
+  <div id="drop-overlay">ファイルをドロップ...</div>
+  <div id="toast-container"></div>
+  
+  <!-- ランディング画面 (初期表示) -->
+  <div id="landing-modal" class="modal-overlay active">
+    <div class="modal-content">
+      <h2>Krunker Replay Viewer</h2>
+      <p style="color:#aaa; font-size:14px;">高品質な3Dリプレイをブラウザで再生</p>
+      
+      <div id="landing-box">
+        <div style="font-size:32px; margin-bottom:10px;">📥</div>
+        <div><b>.json</b> 形式のリプレイファイルを<br>ここにドラッグ＆ドロップしてください</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ヘルプ画面 -->
+  <div id="help-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="close-btn" id="close-help">&times;</div>
+      <h2>操作方法</h2>
+      <div class="controls-list">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> : カメラの移動（自由視点時）</div>
+        <div><kbd>E</kbd> / <kbd>Q</kbd> : カメラの上昇 / 下降</div>
+        <div><b>左ドラッグ</b> : 視点の回転（見回す）</div>
+        <div><b>ホイール</b> : カメラのズーム</div>
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
+        <div><kbd>Space</kbd> : 再生 / 一時停止</div>
+        <div><kbd>←</kbd> / <kbd>→</kbd> : 1秒戻る / 進む</div>
+        <div><kbd>Tab</kbd> : スコアボード表示</div>
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
+        <div style="color:#aaa; font-size:12px;">※ マップ(地形)データがない場合、灰色のブロックは表示されずプレイヤーのみが空中に表示されます。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- MsgPack CDN -->
+  <script src="https://unpkg.com/@msgpack/msgpack"></script>
+  
+  <script src="dist/bundle.js?v=11"></script>
+</body>
+</html>

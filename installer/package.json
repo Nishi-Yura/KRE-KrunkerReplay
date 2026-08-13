@@ -1,0 +1,15 @@
+{
+  "name": "@krunker-replay/installer",
+  "version": "1.0.0",
+  "description": "Krunker Replay Sideloader - asar injection tool",
+  "main": "src/sideloader.js",
+  "type": "commonjs",
+  "bin": {
+    "kre-install": "src/sideloader.js",
+    "kre-uninstall": "src/sideloader.js"
+  },
+  "dependencies": {
+    "@electron/asar": "^3.2.0",
+    "crc-32": "^1.2.2"
+  }
+}

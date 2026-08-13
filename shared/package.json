@@ -1,0 +1,7 @@
+{
+  "name": "@krunker-replay/shared",
+  "version": "1.0.0",
+  "description": "Krunker Replay Tool - Shared utilities",
+  "main": "src/kre-format.js",
+  "type": "commonjs"
+}

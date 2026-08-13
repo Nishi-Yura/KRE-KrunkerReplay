@@ -1,0 +1,10 @@
+{
+  "name": "@krunker-replay/converter",
+  "version": "1.0.0",
+  "description": "Krunker Map JSON to GLTF converter",
+  "main": "src/kre_map_converter.js",
+  "type": "commonjs",
+  "bin": {
+    "kre-convert": "src/kre_map_converter.js"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "savePath": "%USERPROFILE%/Documents/KrunkerReplays",
+  "sampleRateHz": 50,
+  "zlibLevel": 6,
+  "chunkFrameCount": 1000,
+  "autoRecord": true,
+  "fastModeZlibLevel": 1,
+  "fileNamingPattern": "krunker_{YYYYMMDD}_{HHMMSS}_{map}",
+  "maxReplayFiles": 100,
+  "versionCheckEnabled": true,
+  "debug": false
+}
