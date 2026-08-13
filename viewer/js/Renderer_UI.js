@@ -1,6 +1,11 @@
 import { State, Shared } from './State.js';
 import { KRUNKER_CLASSES } from './Constants.js';
 
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function updateDynamicHUD(currentFrame) {
     if (!currentFrame || !State.targetPlayerId) return;
     const p = currentFrame.players.find(x => x.id == State.targetPlayerId);
@@ -11,7 +16,7 @@ export function updateDynamicHUD(currentFrame) {
     if (classHud && classHud.style.display !== 'none') {
         const className = KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`;
         const pName = p.name || `Player ${p.id}`;
-        classHud.innerHTML = `Spectating: <span style="color:#00ff88">${pName}</span><br><span style="font-size:12px; opacity:0.8">${className}</span>`;
+        classHud.innerHTML = `Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span><br><span style="font-size:12px; opacity:0.8">${escapeHTML(className)}</span>`;
     }
     
     // Also update the player list if they changed class
@@ -40,10 +45,25 @@ export function drawMinimap() {
   
   const pList = Object.entries(Shared.realMeshes);
   
+  // Calculate dynamic bounds from all visible meshes
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   pList.forEach(([id, mesh]) => {
     if(!mesh || mesh.visible === false) return;
-    const x = (mesh.position.x + 100);
-    const y = (mesh.position.z + 100);
+    minX = Math.min(minX, mesh.position.x);
+    maxX = Math.max(maxX, mesh.position.x);
+    minZ = Math.min(minZ, mesh.position.z);
+    maxZ = Math.max(maxZ, mesh.position.z);
+  });
+  const rangeX = Math.max(maxX - minX, 50);
+  const rangeZ = Math.max(maxZ - minZ, 50);
+  const scale = Math.min(160 / rangeX, 160 / rangeZ);
+  const cx = (minX + maxX) / 2;
+  const cz = (minZ + maxZ) / 2;
+
+  pList.forEach(([id, mesh]) => {
+    if(!mesh || mesh.visible === false) return;
+    const x = 100 + (mesh.position.x - cx) * scale;
+    const y = 100 + (mesh.position.z - cz) * scale;
     
     ctx.fillStyle = '#fff';
     ctx.beginPath();
@@ -77,7 +97,7 @@ export function updateNametags(currentFrame) {
                 const hpPercent = (hp / maxHp) * 100;
                 
                 tagDiv.innerHTML = `
-                    <div class="nametag-name" id="nametag-name-${id}">${pName}</div>
+                    <div class="nametag-name" id="nametag-name-${id}">${escapeHTML(pName)}</div>
                     <div class="nametag-hp-bar">
                         <div class="nametag-hp-fill" id="nametag-hp-${id}" style="width: ${hpPercent}%"></div>
                     </div>
@@ -155,8 +175,16 @@ export function updateKillLog(currentFrame) {
         let victimTeam = 0;
 
         if (Shared.playerInfo) {
-            const kP = Shared.playerInfo.find(p => p.id == k.killer);
-            const vP = Shared.playerInfo.find(p => p.id == k.victim);
+            let kP, vP;
+            if (Array.isArray(Shared.playerInfo)) {
+                kP = Shared.playerInfo.find(p => p.id == k.killer);
+                vP = Shared.playerInfo.find(p => p.id == k.victim);
+            } else {
+                const kInfo = Shared.playerInfo[String(k.killer)];
+                const vInfo = Shared.playerInfo[String(k.victim)];
+                if (kInfo) kP = { pName: kInfo.name, team: kInfo.team };
+                if (vInfo) vP = { pName: vInfo.name, team: vInfo.team };
+            }
             if (kP && kP.pName) {
                 killerName = kP.pName;
                 killerTeam = kP.team || 0;
@@ -178,9 +206,9 @@ export function updateKillLog(currentFrame) {
         const weaponIcon = k.headshot ? '💀' : '🔫';
 
         row.innerHTML = `
-            <span style="color: ${killerColor}; font-weight: bold;">${killerName}</span>
+            <span style="color: ${killerColor}; font-weight: bold;">${escapeHTML(killerName)}</span>
             <span style="margin: 0 8px; font-size: 10px; color: #fff;">${weaponIcon}</span>
-            <span style="color: ${victimColor}; font-weight: bold;">${victimName}</span>
+            <span style="color: ${victimColor}; font-weight: bold;">${escapeHTML(victimName)}</span>
         `;
         killLogContainer.appendChild(row);
     });
@@ -220,9 +248,16 @@ export function updateScoreboard() {
         // Calculate dynamic scores based on current time
         const timeMs = State.time * 1000;
         const dynamicStats = {};
-        Shared.playerInfo.forEach(p => {
-            dynamicStats[p.id] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
-        });
+        if (Array.isArray(Shared.playerInfo)) {
+            Shared.playerInfo.forEach(p => {
+                dynamicStats[p.id] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
+            });
+        } else if (Shared.playerInfo && typeof Shared.playerInfo === 'object') {
+            // playerInfo is a map { id: { name, team } }
+            Object.entries(Shared.playerInfo).forEach(([id, info]) => {
+                dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
+            });
+        }
         
         if (Shared.events) {
             let latestScoreboard = null;
@@ -268,7 +303,7 @@ export function updateScoreboard() {
             else if (p.team === 2) color = '#00ccff';
             
             html += '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">';
-            html += `<td style="padding: 8px; color: ${color}; font-weight: bold;">${p.pName}</td>`;
+            html += `<td style="padding: 8px; color: ${color}; font-weight: bold;">${escapeHTML(p.pName)}</td>`;
             html += `<td style="padding: 8px;">${p.score}</td>`;
             html += `<td style="padding: 8px;">${p.kills}</td>`;
             html += `<td style="padding: 8px;">${p.deaths}</td>`;

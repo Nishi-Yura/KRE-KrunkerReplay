@@ -19,7 +19,10 @@ export const Shared = {
   mapGroup: null,
   scene: null,
   camera: null,
-  realMeshes: {}
+  realMeshes: {},
+  events: [],
+  trails: [],
+  playerInfo: null
 };
 
 export function hexToNum(hex) {

@@ -38,13 +38,22 @@ export function parseJSONLog(jsonString) {
   // Track last frame push time to avoid duplicate frames
   let lastFrameTime = -1;
   
+  const clonePlayer = (p) => ({
+      id: p.id, name: p.name, team: p.team,
+      pos: [p.pos[0], p.pos[1], p.pos[2]],
+      rot: [p.rot[0], p.rot[1]],
+      health: p.health, maxHealth: p.maxHealth,
+      hasSpawned: p.hasSpawned, shoot: p.shoot, aim: p.aim,
+      isValid: p.isValid, classId: p.classId
+  });
+
   const pushFrame = (t) => {
       const ts = t - minTime;
       if (ts === lastFrameTime) return; // Skip duplicate timestamps
       lastFrameTime = ts;
       const currentFramePlayers = Object.values(playersMap)
           .filter(p => p.hasSpawned)
-          .map(p => JSON.parse(JSON.stringify(p)));
+          .map(p => clonePlayer(p));
       Shared.realFrames.push({ timestamp: ts, players: currentFramePlayers });
   };
 
@@ -66,7 +75,7 @@ export function parseJSONLog(jsonString) {
               const sid = pArr[i+1];
               if (sid === undefined) continue;
               if (!playersMap[sid]) {
-                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, isValid: false };
+                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, aim: false, isValid: false };
               }
               if (pArr[i+5]) {
                   playersMap[sid].name = pArr[i+5];
@@ -106,7 +115,7 @@ export function parseJSONLog(jsonString) {
               hasKPacket[sid] = true;
               
               if (!playersMap[sid]) {
-                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, isValid: false };
+                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, aim: false, isValid: false };
               }
               playersMap[sid].hasSpawned = true;
               playersMap[sid].pos = [pArr[i+1], pArr[i+2], pArr[i+3]];
@@ -114,7 +123,13 @@ export function parseJSONLog(jsonString) {
               const pitch = pArr[i+5] * Math.PI / 180;
               playersMap[sid].rot = [yaw, pitch];
               
+              // i+7 = shoot flag (0/1), i+8 = aim/scope flag (0/1)
+              playersMap[sid].shoot = !!pArr[i+7];
               playersMap[sid].aim = !!pArr[i+8];
+              // i+12 = HP (range ~19-102)
+              if (stride >= 13 && pArr[i+12] !== undefined) {
+                  playersMap[sid].health = pArr[i+12];
+              }
           }
           pushFrame(t);
       }
@@ -128,7 +143,7 @@ export function parseJSONLog(jsonString) {
               if (hasKPacket[sid]) continue;
               
               if (!playersMap[sid]) {
-                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0,0,0], rot: [0,0], hasSpawned: false, maxHealth: 100, shoot: false };
+                  playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0,0,0], rot: [0,0], hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
               }
               // AI players should be spawned and visible
               playersMap[sid].hasSpawned = true;
@@ -150,7 +165,7 @@ export function parseJSONLog(jsonString) {
           if (sid === null || sid === undefined) sid = 0;
           
           if (!playersMap[sid]) {
-              playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false };
+              playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
           }
           playersMap[sid].health = hp;
           if (hp > 0) {
@@ -236,34 +251,29 @@ export function parseJSONLog(jsonString) {
           });
       }
       // ===== l-packet: Projectile data =====
-      else if (op === 'l' && Array.isArray(payload[1])) {
+      else if (op === 'l' && payload[1] && Array.isArray(payload[1])) {
           const pArr = payload[1];
-          const projs = [];
-          let stride = 10;
-          if (pArr.length > 0) {
-              if (pArr.length % 26 === 0) stride = 26;
-              else if (pArr.length % 10 === 0) stride = 10;
-              else stride = pArr.length; // fallback
+          if (pArr.length >= 26) {
+              const projs = [];
+              const stride = 26;
+              for (let i = 0; i + 25 < pArr.length; i += stride) {
+                  projs.push({
+                      id: pArr[i],
+                      ownerId: pArr[i+1],
+                      pos: [pArr[i+2], pArr[i+3], pArr[i+4]]
+                  });
+              }
+              const currentFramePlayers = Object.values(playersMap)
+                  .filter(p => p.hasSpawned)
+                  .map(p => clonePlayer(p));
+              Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
           }
-          
-          for (let i = 0; i < pArr.length; i += stride) {
-              projs.push({
-                  id: pArr[i],
-                  ownerId: pArr[i+1],
-                  pos: [pArr[i+2], pArr[i+3], pArr[i+4]],
-                  dirVec: [pArr[i+5], pArr[i+6], pArr[i+7]]
-              });
-          }
-          const currentFramePlayers = Object.values(playersMap)
-              .filter(p => p.hasSpawned)
-              .map(p => JSON.parse(JSON.stringify(p)));
-          Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
       }
       else if (op === 'l_parsed' && payload.length > 1) {
           const projs = payload[1];
           const currentFramePlayers = Object.values(playersMap)
               .filter(p => p.hasSpawned)
-              .map(p => JSON.parse(JSON.stringify(p)));
+              .map(p => clonePlayer(p));
           Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
       }
       else if (ev && ev[2] === true && op === 'en') {

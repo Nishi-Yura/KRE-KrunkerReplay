@@ -19,7 +19,10 @@
     mapGroup: null,
     scene: null,
     camera: null,
-    realMeshes: {}
+    realMeshes: {},
+    events: [],
+    trails: [],
+    playerInfo: null
   };
   function hexToNum(hex) {
     if (hex.startsWith("#")) hex = hex.slice(1);
@@ -87,6 +90,10 @@
   };
 
   // viewer/js/Renderer_UI.js
+  function escapeHTML(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
   function updateDynamicHUD(currentFrame) {
     if (!currentFrame || !State.targetPlayerId) return;
     const p = currentFrame.players.find((x) => x.id == State.targetPlayerId);
@@ -95,7 +102,7 @@
     if (classHud && classHud.style.display !== "none") {
       const className = KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`;
       const pName = p.name || `Player ${p.id}`;
-      classHud.innerHTML = `Spectating: <span style="color:#00ff88">${pName}</span><br><span style="font-size:12px; opacity:0.8">${className}</span>`;
+      classHud.innerHTML = `Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span><br><span style="font-size:12px; opacity:0.8">${escapeHTML(className)}</span>`;
     }
     const pCard = document.querySelector(`.player-card[data-id="${p.id}"]`);
     if (pCard) {
@@ -117,10 +124,23 @@
     ctx.fillRect(10, 10, 180, 180);
     if (State.mode !== "real") return;
     const pList = Object.entries(Shared.realMeshes);
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     pList.forEach(([id, mesh]) => {
       if (!mesh || mesh.visible === false) return;
-      const x = mesh.position.x + 100;
-      const y = mesh.position.z + 100;
+      minX = Math.min(minX, mesh.position.x);
+      maxX = Math.max(maxX, mesh.position.x);
+      minZ = Math.min(minZ, mesh.position.z);
+      maxZ = Math.max(maxZ, mesh.position.z);
+    });
+    const rangeX = Math.max(maxX - minX, 50);
+    const rangeZ = Math.max(maxZ - minZ, 50);
+    const scale = Math.min(160 / rangeX, 160 / rangeZ);
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    pList.forEach(([id, mesh]) => {
+      if (!mesh || mesh.visible === false) return;
+      const x = 100 + (mesh.position.x - cx) * scale;
+      const y = 100 + (mesh.position.z - cz) * scale;
       ctx.fillStyle = "#fff";
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, Math.PI * 2);
@@ -147,7 +167,7 @@
           const maxHp = pData.maxHealth || 100;
           const hpPercent = hp / maxHp * 100;
           tagDiv.innerHTML = `
-                    <div class="nametag-name" id="nametag-name-${id}">${pName}</div>
+                    <div class="nametag-name" id="nametag-name-${id}">${escapeHTML(pName)}</div>
                     <div class="nametag-hp-bar">
                         <div class="nametag-hp-fill" id="nametag-hp-${id}" style="width: ${hpPercent}%"></div>
                     </div>
@@ -213,8 +233,16 @@
       let killerTeam = 0;
       let victimTeam = 0;
       if (Shared.playerInfo) {
-        const kP = Shared.playerInfo.find((p) => p.id == k.killer);
-        const vP = Shared.playerInfo.find((p) => p.id == k.victim);
+        let kP, vP;
+        if (Array.isArray(Shared.playerInfo)) {
+          kP = Shared.playerInfo.find((p) => p.id == k.killer);
+          vP = Shared.playerInfo.find((p) => p.id == k.victim);
+        } else {
+          const kInfo = Shared.playerInfo[String(k.killer)];
+          const vInfo = Shared.playerInfo[String(k.victim)];
+          if (kInfo) kP = { pName: kInfo.name, team: kInfo.team };
+          if (vInfo) vP = { pName: vInfo.name, team: vInfo.team };
+        }
         if (kP && kP.pName) {
           killerName = kP.pName;
           killerTeam = kP.team || 0;
@@ -232,9 +260,9 @@
       else if (victimTeam === 2) victimColor = "#00ccff";
       const weaponIcon = k.headshot ? "\u{1F480}" : "\u{1F52B}";
       row.innerHTML = `
-            <span style="color: ${killerColor}; font-weight: bold;">${killerName}</span>
+            <span style="color: ${killerColor}; font-weight: bold;">${escapeHTML(killerName)}</span>
             <span style="margin: 0 8px; font-size: 10px; color: #fff;">${weaponIcon}</span>
-            <span style="color: ${victimColor}; font-weight: bold;">${victimName}</span>
+            <span style="color: ${victimColor}; font-weight: bold;">${escapeHTML(victimName)}</span>
         `;
       killLogContainer.appendChild(row);
     });
@@ -269,9 +297,15 @@
       html += "</tr>";
       const timeMs = State.time * 1e3;
       const dynamicStats = {};
-      Shared.playerInfo.forEach((p) => {
-        dynamicStats[p.id] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
-      });
+      if (Array.isArray(Shared.playerInfo)) {
+        Shared.playerInfo.forEach((p) => {
+          dynamicStats[p.id] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
+        });
+      } else if (Shared.playerInfo && typeof Shared.playerInfo === "object") {
+        Object.entries(Shared.playerInfo).forEach(([id, info]) => {
+          dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
+        });
+      }
       if (Shared.events) {
         let latestScoreboard = null;
         for (let i = 0; i < Shared.events.length; i++) {
@@ -308,7 +342,7 @@
         if (p.team === 1) color = "#ff8800";
         else if (p.team === 2) color = "#00ccff";
         html += '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">';
-        html += `<td style="padding: 8px; color: ${color}; font-weight: bold;">${p.pName}</td>`;
+        html += `<td style="padding: 8px; color: ${color}; font-weight: bold;">${escapeHTML(p.pName)}</td>`;
         html += `<td style="padding: 8px;">${p.score}</td>`;
         html += `<td style="padding: 8px;">${p.kills}</td>`;
         html += `<td style="padding: 8px;">${p.deaths}</td>`;
@@ -412,16 +446,53 @@
   }
 
   // viewer/js/Renderer_Tracers.js
-  function spawnProjectile(proj) {
-    if (!proj || !proj.pos || !proj.dirVec) return;
-    const origin = new THREE.Vector3(proj.pos[0], proj.pos[1], proj.pos[2]);
-    const dir = new THREE.Vector3(proj.dirVec[0], proj.dirVec[1], proj.dirVec[2]).normalize();
-    const tracerLength = 4;
-    const tracerGeo = new THREE.CylinderGeometry(0.8, 0.8, tracerLength, 6);
-    tracerGeo.translate(0, tracerLength / 2, 0);
-    tracerGeo.rotateX(Math.PI / 2);
+  var _tracerGeo = null;
+  function getTracerGeo() {
+    if (!_tracerGeo) {
+      _tracerGeo = new THREE.CylinderGeometry(0.8, 0.8, 4, 6);
+      _tracerGeo.translate(0, 2, 0);
+      _tracerGeo.rotateX(Math.PI / 2);
+    }
+    return _tracerGeo;
+  }
+  function spawnTracer(mesh, p) {
+    const origin = mesh.position.clone();
+    origin.y += 5;
+    const dir = new THREE.Vector3(0, 0, -1);
+    const euler = new THREE.Euler(p.rot[1] || 0, p.rot[0] || 0, 0, "YXZ");
+    dir.applyEuler(euler);
     const tracerMat = new THREE.MeshBasicMaterial({ color: 16763904, transparent: true, opacity: 1 });
-    const tracerMesh = new THREE.Mesh(tracerGeo, tracerMat);
+    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
+    tracerMesh.position.copy(origin);
+    tracerMesh.rotation.order = "YXZ";
+    tracerMesh.rotation.set(p.rot[1] || 0, p.rot[0] || 0, 0);
+    Shared.scene.add(tracerMesh);
+    if (!Shared.trails) Shared.trails = [];
+    Shared.trails.push({
+      mesh: tracerMesh,
+      createdAt: Date.now(),
+      origin: origin.clone(),
+      velocity: dir.multiplyScalar(800)
+    });
+  }
+  function spawnProjectile(proj) {
+    if (!proj || !proj.pos) return;
+    const origin = new THREE.Vector3(proj.pos[0], proj.pos[1], proj.pos[2]);
+    let dir = new THREE.Vector3(0, 0, -1);
+    if (proj.ownerId !== void 0) {
+      for (const [id, mesh] of Object.entries(Shared.realMeshes)) {
+        if (mesh && mesh.visible) {
+          const dist = origin.distanceTo(mesh.position);
+          if (dist < 30) {
+            dir.set(0, 0, -1);
+            dir.applyQuaternion(mesh.quaternion);
+            break;
+          }
+        }
+      }
+    }
+    const tracerMat = new THREE.MeshBasicMaterial({ color: 16763904, transparent: true, opacity: 1 });
+    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
     tracerMesh.position.copy(origin);
     const lookTarget = origin.clone().add(dir);
     tracerMesh.lookAt(lookTarget);
@@ -442,11 +513,16 @@
       const age = now - t.createdAt;
       if (age > 400) {
         Shared.scene.remove(t.mesh);
+        if (t.mesh.material) t.mesh.material.dispose();
         Shared.trails.splice(i, 1);
       } else {
         if (t.velocity) {
-          const travelDist = t.velocity.clone().multiplyScalar(age / 1e3);
-          t.mesh.position.copy(t.origin).add(travelDist);
+          const scale = age / 1e3;
+          t.mesh.position.set(
+            t.origin.x + t.velocity.x * scale,
+            t.origin.y + t.velocity.y * scale,
+            t.origin.z + t.velocity.z * scale
+          );
         }
         t.mesh.material.opacity = 1 - age / 400;
       }
@@ -454,6 +530,10 @@
   }
 
   // viewer/js/Renderer_Loop.js
+  var _targetPos = new THREE.Vector3();
+  var _nextPos = new THREE.Vector3();
+  var _qTarget = new THREE.Quaternion();
+  var _yAxis = new THREE.Vector3(0, 1, 0);
   function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -485,10 +565,10 @@
       currentFrame = Shared.realFrames[frameIdx];
       nextFrame = frameIdx < Shared.realFrames.length - 1 ? Shared.realFrames[frameIdx + 1] : currentFrame;
     }
-    updateCamera(delta, currentFrame);
     if (State.mode === "real" && currentFrame) {
       const timeMs = State.time * 1e3;
-      const lerpFactor = nextFrame ? (timeMs - currentFrame.timestamp) / (nextFrame.timestamp - currentFrame.timestamp) : 0;
+      const dt = nextFrame ? nextFrame.timestamp - currentFrame.timestamp : 1;
+      const lerpFactor = nextFrame ? Math.min(1, Math.max(0, (timeMs - currentFrame.timestamp) / dt)) : 0;
       Object.values(Shared.realMeshes).forEach((m2) => m2.visible = false);
       currentFrame.players.forEach((p) => {
         let mesh = Shared.realMeshes[p.id];
@@ -521,14 +601,14 @@
           }
           mesh.visible = p.health !== 0;
           if (!mesh.visible) return;
-          let targetPos = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2]);
+          _targetPos.set(p.pos[0], p.pos[1], p.pos[2]);
           let targetYaw = p.rot[1] || 0;
           if (nextFrame) {
             const nextP = nextFrame.players.find((x) => x.id === p.id);
             if (nextP && nextP.health > 0) {
-              const nextPos = new THREE.Vector3(nextP.pos[0], nextP.pos[1], nextP.pos[2]);
-              if (targetPos.distanceTo(nextPos) < 100) {
-                targetPos.lerp(nextPos, lerpFactor);
+              _nextPos.set(nextP.pos[0], nextP.pos[1], nextP.pos[2]);
+              if (_targetPos.distanceTo(_nextPos) < 100) {
+                _targetPos.lerp(_nextPos, lerpFactor);
                 const nextYaw = nextP.rot[1] || 0;
                 let diff = nextYaw - targetYaw;
                 while (diff < -Math.PI) diff += Math.PI * 2;
@@ -537,12 +617,16 @@
               }
             }
           }
-          mesh.position.lerp(targetPos, 0.5);
-          const qTarget = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetYaw);
-          mesh.quaternion.slerp(qTarget, 0.5);
-          if (mesh.position.distanceTo(targetPos) > 0.1) {
+          mesh.position.lerp(_targetPos, 0.5);
+          _qTarget.setFromAxisAngle(_yAxis, targetYaw);
+          mesh.quaternion.slerp(_qTarget, 0.5);
+          if (mesh.position.distanceTo(_targetPos) > 0.1) {
             mesh.userData.walkCycle = (mesh.userData.walkCycle || 0) + delta * 15;
           }
+          if (State.isPlaying && p.shoot && !mesh.userData.lastShoot) {
+            spawnTracer(mesh, p);
+          }
+          mesh.userData.lastShoot = p.shoot;
         }
       });
       if (State.isPlaying && currentFrame.projectiles && !currentFrame._tracersSpawned) {
@@ -553,6 +637,7 @@
       }
       updateTracers();
     }
+    updateCamera(delta, currentFrame);
     updateNametags(currentFrame);
     updateKillLog(currentFrame);
     updateScoreboard();
@@ -1094,11 +1179,25 @@
     });
     const hasKPacket = {};
     let lastFrameTime = -1;
+    const clonePlayer = (p) => ({
+      id: p.id,
+      name: p.name,
+      team: p.team,
+      pos: [p.pos[0], p.pos[1], p.pos[2]],
+      rot: [p.rot[0], p.rot[1]],
+      health: p.health,
+      maxHealth: p.maxHealth,
+      hasSpawned: p.hasSpawned,
+      shoot: p.shoot,
+      aim: p.aim,
+      isValid: p.isValid,
+      classId: p.classId
+    });
     const pushFrame = (t) => {
       const ts = t - minTime;
       if (ts === lastFrameTime) return;
       lastFrameTime = ts;
-      const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => JSON.parse(JSON.stringify(p)));
+      const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => clonePlayer(p));
       Shared.realFrames.push({ timestamp: ts, players: currentFramePlayers });
     };
     const processPayload = (t, payload, ev) => {
@@ -1113,7 +1212,7 @@
           const sid = pArr[i + 1];
           if (sid === void 0) continue;
           if (!playersMap[sid]) {
-            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, isValid: false };
+            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, aim: false, isValid: false };
           }
           if (pArr[i + 5]) {
             playersMap[sid].name = pArr[i + 5];
@@ -1149,14 +1248,18 @@
           if (sid === void 0) continue;
           hasKPacket[sid] = true;
           if (!playersMap[sid]) {
-            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, isValid: false };
+            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, aim: false, isValid: false };
           }
           playersMap[sid].hasSpawned = true;
           playersMap[sid].pos = [pArr[i + 1], pArr[i + 2], pArr[i + 3]];
           const yaw = pArr[i + 4] * Math.PI / 180;
           const pitch = pArr[i + 5] * Math.PI / 180;
           playersMap[sid].rot = [yaw, pitch];
+          playersMap[sid].shoot = !!pArr[i + 7];
           playersMap[sid].aim = !!pArr[i + 8];
+          if (stride >= 13 && pArr[i + 12] !== void 0) {
+            playersMap[sid].health = pArr[i + 12];
+          }
         }
         pushFrame(t);
       } else if (op === "ai" && payload.length > 1) {
@@ -1166,7 +1269,7 @@
           if (sid === void 0) continue;
           if (hasKPacket[sid]) continue;
           if (!playersMap[sid]) {
-            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0, 0, 0], rot: [0, 0], hasSpawned: false, maxHealth: 100, shoot: false };
+            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0, 0, 0], rot: [0, 0], hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
           }
           playersMap[sid].hasSpawned = true;
           playersMap[sid].pos = [pArr[i + 1], pArr[i + 2], pArr[i + 3]];
@@ -1182,7 +1285,7 @@
         if (typeof hp !== "number") return;
         if (sid === null || sid === void 0) sid = 0;
         if (!playersMap[sid]) {
-          playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false };
+          playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
         }
         playersMap[sid].health = hp;
         if (hp > 0) {
@@ -1248,28 +1351,24 @@
             p.health = 100;
           }
         });
-      } else if (op === "l" && Array.isArray(payload[1])) {
+      } else if (op === "l" && payload[1] && Array.isArray(payload[1])) {
         const pArr = payload[1];
-        const projs = [];
-        let stride = 10;
-        if (pArr.length > 0) {
-          if (pArr.length % 26 === 0) stride = 26;
-          else if (pArr.length % 10 === 0) stride = 10;
-          else stride = pArr.length;
+        if (pArr.length >= 26) {
+          const projs = [];
+          const stride = 26;
+          for (let i = 0; i + 25 < pArr.length; i += stride) {
+            projs.push({
+              id: pArr[i],
+              ownerId: pArr[i + 1],
+              pos: [pArr[i + 2], pArr[i + 3], pArr[i + 4]]
+            });
+          }
+          const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => clonePlayer(p));
+          Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
         }
-        for (let i = 0; i < pArr.length; i += stride) {
-          projs.push({
-            id: pArr[i],
-            ownerId: pArr[i + 1],
-            pos: [pArr[i + 2], pArr[i + 3], pArr[i + 4]],
-            dirVec: [pArr[i + 5], pArr[i + 6], pArr[i + 7]]
-          });
-        }
-        const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => JSON.parse(JSON.stringify(p)));
-        Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
       } else if (op === "l_parsed" && payload.length > 1) {
         const projs = payload[1];
-        const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => JSON.parse(JSON.stringify(p)));
+        const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => clonePlayer(p));
         Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
       } else if (ev && ev[2] === true && op === "en") {
         const pData = payload[1];

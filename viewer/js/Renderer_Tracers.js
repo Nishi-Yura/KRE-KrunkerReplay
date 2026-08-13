@@ -1,19 +1,26 @@
 import { Shared } from './State.js';
 
+// Reusable geometry and material for tracers (avoid per-tracer allocation)
+let _tracerGeo = null;
+function getTracerGeo() {
+    if (!_tracerGeo) {
+        _tracerGeo = new THREE.CylinderGeometry(0.8, 0.8, 4, 6);
+        _tracerGeo.translate(0, 2, 0);
+        _tracerGeo.rotateX(Math.PI / 2);
+    }
+    return _tracerGeo;
+}
+
 export function spawnTracer(mesh, p) {
     const origin = mesh.position.clone();
-    origin.y += 5; // Approx gun height
+    origin.y += 5;
     
     const dir = new THREE.Vector3(0, 0, -1);
     const euler = new THREE.Euler(p.rot[1] || 0, p.rot[0] || 0, 0, 'YXZ');
     dir.applyEuler(euler);
     
-    const tracerLength = 4;
-    const tracerGeo = new THREE.CylinderGeometry(0.8, 0.8, tracerLength, 6);
-    tracerGeo.translate(0, tracerLength/2, 0); 
-    tracerGeo.rotateX(Math.PI / 2); 
     const tracerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1.0 });
-    const tracerMesh = new THREE.Mesh(tracerGeo, tracerMat);
+    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
     
     tracerMesh.position.copy(origin);
     tracerMesh.rotation.order = 'YXZ';
@@ -25,26 +32,37 @@ export function spawnTracer(mesh, p) {
         mesh: tracerMesh, 
         createdAt: Date.now(),
         origin: origin.clone(),
-        velocity: dir.multiplyScalar(800) // 800 units per second speed
+        velocity: dir.multiplyScalar(800)
     });
 }
 
 export function spawnProjectile(proj) {
-    if (!proj || !proj.pos || !proj.dirVec) return;
+    if (!proj || !proj.pos) return;
     
     const origin = new THREE.Vector3(proj.pos[0], proj.pos[1], proj.pos[2]);
-    const dir = new THREE.Vector3(proj.dirVec[0], proj.dirVec[1], proj.dirVec[2]).normalize();
     
-    const tracerLength = 4;
-    const tracerGeo = new THREE.CylinderGeometry(0.8, 0.8, tracerLength, 6);
-    tracerGeo.translate(0, tracerLength/2, 0); 
-    tracerGeo.rotateX(Math.PI / 2); 
+    // Find owner's direction from current frame to aim tracer correctly
+    // Since l-packet i+5,6,7 are NOT direction vectors (values too small ~0.01),
+    // we find the nearest player mesh and use their rotation
+    let dir = new THREE.Vector3(0, 0, -1); // default forward
+    if (proj.ownerId !== undefined) {
+        // Try to find owner mesh in any ID namespace
+        for (const [id, mesh] of Object.entries(Shared.realMeshes)) {
+            if (mesh && mesh.visible) {
+                const dist = origin.distanceTo(mesh.position);
+                if (dist < 30) { // If projectile origin is near this player, use their rotation
+                    dir.set(0, 0, -1);
+                    dir.applyQuaternion(mesh.quaternion);
+                    break;
+                }
+            }
+        }
+    }
+    
     const tracerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1.0 });
-    const tracerMesh = new THREE.Mesh(tracerGeo, tracerMat);
+    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
     
     tracerMesh.position.copy(origin);
-    
-    // Rotate mesh to face direction
     const lookTarget = origin.clone().add(dir);
     tracerMesh.lookAt(lookTarget);
     
@@ -67,11 +85,17 @@ export function updateTracers() {
         const age = now - t.createdAt;
         if (age > 400) {
             Shared.scene.remove(t.mesh);
+            // Dispose material to prevent VRAM leak (geometry is shared)
+            if (t.mesh.material) t.mesh.material.dispose();
             Shared.trails.splice(i, 1);
         } else {
             if (t.velocity) {
-                const travelDist = t.velocity.clone().multiplyScalar(age / 1000);
-                t.mesh.position.copy(t.origin).add(travelDist);
+                const scale = age / 1000;
+                t.mesh.position.set(
+                    t.origin.x + t.velocity.x * scale,
+                    t.origin.y + t.velocity.y * scale,
+                    t.origin.z + t.velocity.z * scale
+                );
             }
             t.mesh.material.opacity = 1.0 - (age / 400);
         }
