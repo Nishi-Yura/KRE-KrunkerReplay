@@ -82,7 +82,21 @@ export function setupRealPlayers() {
         return { id, pName, team, classId, kills, deaths, score };
     });
     
-    Shared.playerInfo = players;
+    // Merge kill/death/score back into Shared.playerInfo (already set by parser as an array)
+    // If playerInfo already has the right structure, just update stats; otherwise set it.
+    if (!Array.isArray(Shared.playerInfo) || Shared.playerInfo.length === 0) {
+        Shared.playerInfo = players;
+    } else {
+        // Update kills/deaths/score on existing entries
+        players.forEach(p => {
+            const existing = Shared.playerInfo.find(x => x.id === p.id);
+            if (existing) {
+                existing.kills = p.kills;
+                existing.deaths = p.deaths;
+                existing.score = p.score;
+            }
+        });
+    }
     
     // Sort by team
     players.sort((a, b) => a.team - b.team);
@@ -92,7 +106,7 @@ export function setupRealPlayers() {
     if (!classHud) {
         classHud = document.createElement('div');
         classHud.id = 'class-hud';
-        classHud.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: white; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; text-align: center; border: 1px solid rgba(255,255,255,0.2); display: none;';
+        classHud.style.cssText = 'position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); min-width: 220px; background: rgba(0,0,0,0.6); color: white; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; text-align: center; border: 1px solid rgba(255,255,255,0.2); display: none;';
         document.body.appendChild(classHud);
     }
     

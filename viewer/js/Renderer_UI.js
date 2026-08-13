@@ -6,6 +6,76 @@ function escapeHTML(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Shared helper: computes each player's kills/deaths/score/obj as of a given time,
+// using the latest 'scoreboard' event before that time (falling back to counting
+// kill events if the replay has no scoreboard packets yet). Used by both the
+// scoreboard overlay and the per-player spectate HUD so the numbers always agree.
+export function computeDynamicStats(timeMs) {
+    const dynamicStats = {};
+    if (Array.isArray(Shared.playerInfo)) {
+        Shared.playerInfo.forEach(p => {
+            dynamicStats[String(p.id)] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
+        });
+    } else if (Shared.playerInfo && typeof Shared.playerInfo === 'object') {
+        // Legacy map { id: { name, team } }
+        Object.entries(Shared.playerInfo).forEach(([id, info]) => {
+            dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
+        });
+    }
+
+    let isObjMode = false;
+    if (Shared.events) {
+        let latestScoreboard = null;
+        let firstScoreboard = null;
+        for (let i = 0; i < Shared.events.length; i++) {
+            const e = Shared.events[i];
+            if (e.type === 'scoreboard') {
+                if (!firstScoreboard) firstScoreboard = e;
+                if (e.timestamp <= timeMs) {
+                    latestScoreboard = e; 
+                    isObjMode = e.isObjMode;
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        if (!latestScoreboard && firstScoreboard) {
+            latestScoreboard = firstScoreboard;
+            isObjMode = firstScoreboard.isObjMode;
+        }
+
+        if (latestScoreboard) {
+            for (const sid in latestScoreboard.scores) {
+                const key = String(sid);
+                if (!dynamicStats[key]) {
+                    dynamicStats[key] = { id: Number(sid), pName: `Player ${sid}`, team: 0, kills: 0, deaths: 0, score: 0, obj: 0 };
+                }
+                dynamicStats[key].score  = latestScoreboard.scores[sid].score  || 0;
+                dynamicStats[key].kills  = latestScoreboard.scores[sid].kills  || 0;
+                dynamicStats[key].deaths = latestScoreboard.scores[sid].deaths || 0;
+                dynamicStats[key].obj    = latestScoreboard.scores[sid].obj    || 0;
+            }
+        } else {
+            Shared.events.forEach(e => {
+                if (e.timestamp <= timeMs && e.type === 'kill') {
+                    const kKey = String(e.killer);
+                    const vKey = String(e.victim);
+                    if (dynamicStats[kKey]) {
+                        dynamicStats[kKey].kills++;
+                        dynamicStats[kKey].score += e.headshot ? 100 : 50;
+                    }
+                    if (dynamicStats[vKey]) {
+                        dynamicStats[vKey].deaths++;
+                    }
+                }
+            });
+        }
+    }
+
+    return { dynamicStats, isObjMode };
+}
+
 export function updateDynamicHUD(currentFrame) {
     if (!currentFrame || !State.targetPlayerId) return;
     const p = currentFrame.players.find(x => x.id == State.targetPlayerId);
@@ -16,7 +86,32 @@ export function updateDynamicHUD(currentFrame) {
     if (classHud && classHud.style.display !== 'none') {
         const className = KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`;
         const pName = p.name || `Player ${p.id}`;
-        classHud.innerHTML = `Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span><br><span style="font-size:12px; opacity:0.8">${escapeHTML(className)}</span>`;
+        
+        const hp = p.health || 0;
+        const maxHp = p.maxHealth || 100;
+        const hpPercent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+        let hpColor = '#00ff88';
+        if (hpPercent < 30) hpColor = '#ff3333';
+        else if (hpPercent < 60) hpColor = '#ffcc00';
+        
+        const { dynamicStats } = computeDynamicStats(State.time * 1000);
+        const stats = dynamicStats[String(p.id)] || { kills: 0, deaths: 0, score: 0 };
+        const kd = stats.deaths === 0 ? stats.kills : (stats.kills / stats.deaths).toFixed(2);
+        
+        classHud.innerHTML = `
+            <div>Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span></div>
+            <div style="font-size:12px; opacity:0.8; margin-bottom:6px;">${escapeHTML(className)}</div>
+            <div style="width:100%; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                <div style="height:100%; width:${hpPercent}%; background:${hpColor}; transition:width 0.1s linear;"></div>
+            </div>
+            <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}</div>
+            <div style="display:flex; justify-content:center; gap:12px; font-size:12px; font-family:monospace;">
+                <span>Score: <b>${stats.score}</b></span>
+                <span>K: <b>${stats.kills}</b></span>
+                <span>D: <b>${stats.deaths}</b></span>
+                <span>K/D: <b>${kd}</b></span>
+            </div>
+        `;
     }
     
     // Also update the player list if they changed class
@@ -225,14 +320,9 @@ export function updateScoreboard() {
     
     if (State.showScoreboard && Shared.playerInfo) {
         sb.style.display = 'block';
-        let isObjMode = false;
-        if (Shared.events) {
-            for (let i = 0; i < Shared.events.length; i++) {
-                const e = Shared.events[i];
-                if (e.timestamp > State.time * 1000) break;
-                if (e.type === 'scoreboard') isObjMode = e.isObjMode;
-            }
-        }
+        
+        const timeMs = State.time * 1000;
+        const { dynamicStats, isObjMode } = computeDynamicStats(timeMs);
         
         let html = '<h2 style="text-align:center; margin-top:0; color:#fff;">SCOREBOARD</h2>';
         html += '<table style="width:100%; border-collapse: collapse; text-align: left;">';
@@ -244,55 +334,6 @@ export function updateScoreboard() {
         if (isObjMode) html += '<th style="padding: 8px;">OBJ</th>';
         html += '<th style="padding: 8px;">K/D</th>';
         html += '</tr>';
-        
-        // Calculate dynamic scores based on current time
-        const timeMs = State.time * 1000;
-        const dynamicStats = {};
-        if (Array.isArray(Shared.playerInfo)) {
-            Shared.playerInfo.forEach(p => {
-                dynamicStats[p.id] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
-            });
-        } else if (Shared.playerInfo && typeof Shared.playerInfo === 'object') {
-            // playerInfo is a map { id: { name, team } }
-            Object.entries(Shared.playerInfo).forEach(([id, info]) => {
-                dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
-            });
-        }
-        
-        if (Shared.events) {
-            let latestScoreboard = null;
-            // Find the latest scoreboard event before timeMs
-            for (let i = 0; i < Shared.events.length; i++) {
-                const e = Shared.events[i];
-                if (e.timestamp > timeMs) break;
-                if (e.type === 'scoreboard') latestScoreboard = e;
-            }
-            
-            if (latestScoreboard) {
-                // Apply latest scores
-                for (const sid in latestScoreboard.scores) {
-                    if (dynamicStats[sid]) {
-                        dynamicStats[sid].score = latestScoreboard.scores[sid].score;
-                        dynamicStats[sid].kills = latestScoreboard.scores[sid].kills;
-                        dynamicStats[sid].deaths = latestScoreboard.scores[sid].deaths;
-                        dynamicStats[sid].obj = latestScoreboard.scores[sid].obj;
-                    }
-                }
-            } else {
-                // Fallback to counting kills if no scoreboard event (for older replays or very start of game)
-                Shared.events.forEach(e => {
-                    if (e.timestamp <= timeMs && e.type === 'kill') {
-                        if (dynamicStats[e.killer]) {
-                            dynamicStats[e.killer].kills++;
-                            dynamicStats[e.killer].score += e.headshot ? 100 : 50;
-                        }
-                        if (dynamicStats[e.victim]) {
-                            dynamicStats[e.victim].deaths++;
-                        }
-                    }
-                });
-            }
-        }
         
         // Sort by score
         const players = Object.values(dynamicStats).sort((a, b) => b.score - a.score);

@@ -94,6 +94,66 @@
     if (!str) return "";
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function computeDynamicStats(timeMs) {
+    const dynamicStats = {};
+    if (Array.isArray(Shared.playerInfo)) {
+      Shared.playerInfo.forEach((p) => {
+        dynamicStats[String(p.id)] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
+      });
+    } else if (Shared.playerInfo && typeof Shared.playerInfo === "object") {
+      Object.entries(Shared.playerInfo).forEach(([id, info]) => {
+        dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
+      });
+    }
+    let isObjMode = false;
+    if (Shared.events) {
+      let latestScoreboard = null;
+      let firstScoreboard = null;
+      for (let i = 0; i < Shared.events.length; i++) {
+        const e = Shared.events[i];
+        if (e.type === "scoreboard") {
+          if (!firstScoreboard) firstScoreboard = e;
+          if (e.timestamp <= timeMs) {
+            latestScoreboard = e;
+            isObjMode = e.isObjMode;
+          } else {
+            break;
+          }
+        }
+      }
+      if (!latestScoreboard && firstScoreboard) {
+        latestScoreboard = firstScoreboard;
+        isObjMode = firstScoreboard.isObjMode;
+      }
+      if (latestScoreboard) {
+        for (const sid in latestScoreboard.scores) {
+          const key = String(sid);
+          if (!dynamicStats[key]) {
+            dynamicStats[key] = { id: Number(sid), pName: `Player ${sid}`, team: 0, kills: 0, deaths: 0, score: 0, obj: 0 };
+          }
+          dynamicStats[key].score = latestScoreboard.scores[sid].score || 0;
+          dynamicStats[key].kills = latestScoreboard.scores[sid].kills || 0;
+          dynamicStats[key].deaths = latestScoreboard.scores[sid].deaths || 0;
+          dynamicStats[key].obj = latestScoreboard.scores[sid].obj || 0;
+        }
+      } else {
+        Shared.events.forEach((e) => {
+          if (e.timestamp <= timeMs && e.type === "kill") {
+            const kKey = String(e.killer);
+            const vKey = String(e.victim);
+            if (dynamicStats[kKey]) {
+              dynamicStats[kKey].kills++;
+              dynamicStats[kKey].score += e.headshot ? 100 : 50;
+            }
+            if (dynamicStats[vKey]) {
+              dynamicStats[vKey].deaths++;
+            }
+          }
+        });
+      }
+    }
+    return { dynamicStats, isObjMode };
+  }
   function updateDynamicHUD(currentFrame) {
     if (!currentFrame || !State.targetPlayerId) return;
     const p = currentFrame.players.find((x) => x.id == State.targetPlayerId);
@@ -102,7 +162,29 @@
     if (classHud && classHud.style.display !== "none") {
       const className = KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`;
       const pName = p.name || `Player ${p.id}`;
-      classHud.innerHTML = `Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span><br><span style="font-size:12px; opacity:0.8">${escapeHTML(className)}</span>`;
+      const hp = p.health || 0;
+      const maxHp = p.maxHealth || 100;
+      const hpPercent = Math.max(0, Math.min(100, hp / maxHp * 100));
+      let hpColor = "#00ff88";
+      if (hpPercent < 30) hpColor = "#ff3333";
+      else if (hpPercent < 60) hpColor = "#ffcc00";
+      const { dynamicStats } = computeDynamicStats(State.time * 1e3);
+      const stats = dynamicStats[String(p.id)] || { kills: 0, deaths: 0, score: 0 };
+      const kd = stats.deaths === 0 ? stats.kills : (stats.kills / stats.deaths).toFixed(2);
+      classHud.innerHTML = `
+            <div>Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span></div>
+            <div style="font-size:12px; opacity:0.8; margin-bottom:6px;">${escapeHTML(className)}</div>
+            <div style="width:100%; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                <div style="height:100%; width:${hpPercent}%; background:${hpColor}; transition:width 0.1s linear;"></div>
+            </div>
+            <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}</div>
+            <div style="display:flex; justify-content:center; gap:12px; font-size:12px; font-family:monospace;">
+                <span>Score: <b>${stats.score}</b></span>
+                <span>K: <b>${stats.kills}</b></span>
+                <span>D: <b>${stats.deaths}</b></span>
+                <span>K/D: <b>${kd}</b></span>
+            </div>
+        `;
     }
     const pCard = document.querySelector(`.player-card[data-id="${p.id}"]`);
     if (pCard) {
@@ -277,14 +359,8 @@
     }
     if (State.showScoreboard && Shared.playerInfo) {
       sb.style.display = "block";
-      let isObjMode = false;
-      if (Shared.events) {
-        for (let i = 0; i < Shared.events.length; i++) {
-          const e = Shared.events[i];
-          if (e.timestamp > State.time * 1e3) break;
-          if (e.type === "scoreboard") isObjMode = e.isObjMode;
-        }
-      }
+      const timeMs = State.time * 1e3;
+      const { dynamicStats, isObjMode } = computeDynamicStats(timeMs);
       let html = '<h2 style="text-align:center; margin-top:0; color:#fff;">SCOREBOARD</h2>';
       html += '<table style="width:100%; border-collapse: collapse; text-align: left;">';
       html += '<tr style="border-bottom: 2px solid rgba(255,255,255,0.2);">';
@@ -295,47 +371,6 @@
       if (isObjMode) html += '<th style="padding: 8px;">OBJ</th>';
       html += '<th style="padding: 8px;">K/D</th>';
       html += "</tr>";
-      const timeMs = State.time * 1e3;
-      const dynamicStats = {};
-      if (Array.isArray(Shared.playerInfo)) {
-        Shared.playerInfo.forEach((p) => {
-          dynamicStats[p.id] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
-        });
-      } else if (Shared.playerInfo && typeof Shared.playerInfo === "object") {
-        Object.entries(Shared.playerInfo).forEach(([id, info]) => {
-          dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
-        });
-      }
-      if (Shared.events) {
-        let latestScoreboard = null;
-        for (let i = 0; i < Shared.events.length; i++) {
-          const e = Shared.events[i];
-          if (e.timestamp > timeMs) break;
-          if (e.type === "scoreboard") latestScoreboard = e;
-        }
-        if (latestScoreboard) {
-          for (const sid in latestScoreboard.scores) {
-            if (dynamicStats[sid]) {
-              dynamicStats[sid].score = latestScoreboard.scores[sid].score;
-              dynamicStats[sid].kills = latestScoreboard.scores[sid].kills;
-              dynamicStats[sid].deaths = latestScoreboard.scores[sid].deaths;
-              dynamicStats[sid].obj = latestScoreboard.scores[sid].obj;
-            }
-          }
-        } else {
-          Shared.events.forEach((e) => {
-            if (e.timestamp <= timeMs && e.type === "kill") {
-              if (dynamicStats[e.killer]) {
-                dynamicStats[e.killer].kills++;
-                dynamicStats[e.killer].score += e.headshot ? 100 : 50;
-              }
-              if (dynamicStats[e.victim]) {
-                dynamicStats[e.victim].deaths++;
-              }
-            }
-          });
-        }
-      }
       const players = Object.values(dynamicStats).sort((a, b) => b.score - a.score);
       players.forEach((p) => {
         let color = "#fff";
@@ -429,13 +464,8 @@
           Shared.camera.position.y = target.position.y + 15;
           Shared.camera.lookAt(target.position);
         }
-        if (classHud && currentFrame) {
-          const pData = currentFrame.players.find((p) => p.id === State.targetPlayerId);
-          if (pData) {
-            const className = KRUNKER_CLASSES[pData.classId] || `Class ${pData.classId}`;
-            classHud.style.display = "block";
-            classHud.innerHTML = `Spectating: <span style="color:#00ff88">${pData.name || `Player ${pData.id}`}</span><br><span style="font-size:12px; opacity:0.8">${className}</span>`;
-          }
+        if (classHud) {
+          classHud.style.display = "block";
         }
       } else {
         if (classHud) classHud.style.display = "none";
@@ -534,6 +564,7 @@
   var _nextPos = new THREE.Vector3();
   var _qTarget = new THREE.Quaternion();
   var _yAxis = new THREE.Vector3(0, 1, 0);
+  var _lastTimeSec = 0;
   function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -541,6 +572,13 @@
       State.time += delta * State.speed;
       if (State.time > State.duration) State.time = 0;
     }
+    if (State.time < _lastTimeSec - 0.25) {
+      Shared.seenProjectileIds = /* @__PURE__ */ new Set();
+      Object.values(Shared.realMeshes || {}).forEach((m2) => {
+        m2.userData.lastShoot = false;
+      });
+    }
+    _lastTimeSec = State.time;
     const percent = State.time / State.duration * 100;
     const playhead = document.getElementById("playhead");
     if (playhead) playhead.style.left = (percent || 0) + "%";
@@ -617,9 +655,9 @@
               }
             }
           }
-          mesh.position.lerp(_targetPos, 0.5);
+          mesh.position.copy(_targetPos);
           _qTarget.setFromAxisAngle(_yAxis, targetYaw);
-          mesh.quaternion.slerp(_qTarget, 0.5);
+          mesh.quaternion.copy(_qTarget);
           if (mesh.position.distanceTo(_targetPos) > 0.1) {
             mesh.userData.walkCycle = (mesh.userData.walkCycle || 0) + delta * 15;
           }
@@ -631,7 +669,11 @@
       });
       if (State.isPlaying && currentFrame.projectiles && !currentFrame._tracersSpawned) {
         currentFrame._tracersSpawned = true;
+        if (!Shared.seenProjectileIds) Shared.seenProjectileIds = /* @__PURE__ */ new Set();
         currentFrame.projectiles.forEach((proj) => {
+          const key = `${proj.ownerId}:${proj.id}`;
+          if (Shared.seenProjectileIds.has(key)) return;
+          Shared.seenProjectileIds.add(key);
           spawnProjectile(proj);
         });
       }
@@ -865,13 +907,24 @@
       }
       return { id, pName, team, classId, kills, deaths, score };
     });
-    Shared.playerInfo = players;
+    if (!Array.isArray(Shared.playerInfo) || Shared.playerInfo.length === 0) {
+      Shared.playerInfo = players;
+    } else {
+      players.forEach((p) => {
+        const existing = Shared.playerInfo.find((x) => x.id === p.id);
+        if (existing) {
+          existing.kills = p.kills;
+          existing.deaths = p.deaths;
+          existing.score = p.score;
+        }
+      });
+    }
     players.sort((a, b) => a.team - b.team);
     let classHud = document.getElementById("class-hud");
     if (!classHud) {
       classHud = document.createElement("div");
       classHud.id = "class-hud";
-      classHud.style.cssText = "position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: white; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; text-align: center; border: 1px solid rgba(255,255,255,0.2); display: none;";
+      classHud.style.cssText = "position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); min-width: 220px; background: rgba(0,0,0,0.6); color: white; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 16px; font-weight: bold; pointer-events: none; z-index: 100; text-align: center; border: 1px solid rgba(255,255,255,0.2); display: none;";
       document.body.appendChild(classHud);
     }
     players.forEach((p) => {
@@ -1045,6 +1098,7 @@
       State.duration = Shared.realFrames[Shared.realFrames.length - 1].timestamp / 1e3;
       State.time = 0;
       State.mode = "real";
+      Shared.seenProjectileIds = /* @__PURE__ */ new Set();
       setupRealPlayers();
       const landingModal = document.getElementById("landing-modal");
       if (landingModal) landingModal.classList.remove("active");
@@ -1392,7 +1446,11 @@
         if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
         playersMap[0].hasSpawned = true;
         playersMap[0].pos = [payload[1], payload[2], payload[3]];
-        playersMap[0].rot = [payload[4], payload[5]];
+        const rawYaw = payload[4] || 0;
+        const rawPitch = payload[5] || 0;
+        const yawRad = Math.abs(rawYaw) > Math.PI * 2 ? rawYaw * Math.PI / 180 : rawYaw;
+        const pitchRad = Math.abs(rawPitch) > Math.PI * 2 ? rawPitch * Math.PI / 180 : rawPitch;
+        playersMap[0].rot = [yawRad, pitchRad];
         playersMap[0].health = payload[6];
         playersMap[0].maxHealth = Math.max(playersMap[0].maxHealth || 100, payload[6]);
         pushFrame(t);
@@ -1424,7 +1482,7 @@
       const finalInfo = {};
       Object.values(playersMap).forEach((p) => {
         const key = String(p.id);
-        if (!finalInfo[key]) finalInfo[key] = { name: null, team: null };
+        if (!finalInfo[key]) finalInfo[key] = { name: null, team: null, classId: null, maxHealth: null };
         if (p.name) {
           if (!p.name.startsWith("Guest_") && !p.name.startsWith("Player ")) {
             finalInfo[key].name = p.name;
@@ -1433,11 +1491,13 @@
           }
         }
         if (p.team) finalInfo[key].team = p.team;
+        if (p.classId !== void 0) finalInfo[key].classId = p.classId;
+        if (p.maxHealth !== void 0) finalInfo[key].maxHealth = p.maxHealth;
       });
       Shared.realFrames.forEach((f) => {
         f.players.forEach((p) => {
           const key = String(p.id);
-          if (!finalInfo[key]) finalInfo[key] = { name: null, team: null };
+          if (!finalInfo[key]) finalInfo[key] = { name: null, team: null, classId: null, maxHealth: null };
           if (p.name) {
             if (!p.name.startsWith("Guest_") && !p.name.startsWith("Player ")) {
               finalInfo[key].name = p.name;
@@ -1446,6 +1506,8 @@
             }
           }
           if (p.team) finalInfo[key].team = p.team;
+          if (p.classId !== void 0 && finalInfo[key].classId === null) finalInfo[key].classId = p.classId;
+          if (p.maxHealth !== void 0 && finalInfo[key].maxHealth === null) finalInfo[key].maxHealth = p.maxHealth;
         });
       });
       Shared.realFrames.forEach((f) => {
@@ -1461,10 +1523,19 @@
           if (info) {
             if (info.name) p.name = info.name;
             if (info.team) p.team = info.team;
+            if (info.classId !== null && p.classId === void 0) p.classId = info.classId;
+            if (info.maxHealth !== null) p.maxHealth = info.maxHealth;
           }
         });
       });
-      Shared.playerInfo = finalInfo;
+      Shared.playerInfo = Object.entries(finalInfo).map(([id, info]) => ({
+        id: Number(id),
+        pName: info.name || `Player ${id}`,
+        team: info.team || 0,
+        kills: 0,
+        deaths: 0,
+        score: 0
+      }));
       Shared.realFrames.sort((a, b) => a.timestamp - b.timestamp);
       if (Shared.events) {
         Shared.events.forEach((e) => e.timestamp -= minTime);

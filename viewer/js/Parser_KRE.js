@@ -110,6 +110,7 @@ export async function parseKRE(arrayBuffer) {
       State.duration = (Shared.realFrames[Shared.realFrames.length - 1].timestamp) / 1000;
       State.time = 0;
       State.mode = 'real';
+      Shared.seenProjectileIds = new Set();
       setupRealPlayers();
       
       const landingModal = document.getElementById('landing-modal');

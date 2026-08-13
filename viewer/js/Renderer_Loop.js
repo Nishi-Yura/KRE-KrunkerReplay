@@ -9,6 +9,7 @@ const _targetPos = new THREE.Vector3();
 const _nextPos = new THREE.Vector3();
 const _qTarget = new THREE.Quaternion();
 const _yAxis = new THREE.Vector3(0, 1, 0);
+let _lastTimeSec = 0;
 
 export function animate() {
   requestAnimationFrame(animate);
@@ -18,6 +19,14 @@ export function animate() {
       State.time += delta * State.speed;
       if (State.time > State.duration) State.time = 0;
   }
+
+  // If the user jumped backward (seek/scrub/loop), forget which projectiles
+  // we've already rendered so they can be shown again on replay.
+  if (State.time < _lastTimeSec - 0.25) {
+      Shared.seenProjectileIds = new Set();
+      Object.values(Shared.realMeshes || {}).forEach(m => { m.userData.lastShoot = false; });
+  }
+  _lastTimeSec = State.time;
 
   const percent = (State.time / State.duration) * 100;
   const playhead = document.getElementById('playhead');
@@ -112,10 +121,10 @@ export function animate() {
                   }
               }
               
-              mesh.position.lerp(_targetPos, 0.5);
+              mesh.position.copy(_targetPos);
               
               _qTarget.setFromAxisAngle(_yAxis, targetYaw);
-              mesh.quaternion.slerp(_qTarget, 0.5);
+              mesh.quaternion.copy(_qTarget);
               
               if (mesh.position.distanceTo(_targetPos) > 0.1) {
                   mesh.userData.walkCycle = (mesh.userData.walkCycle || 0) + delta * 15;
@@ -130,9 +139,18 @@ export function animate() {
       });
       
       // Also spawn tracers from l-packet projectiles
+      // NOTE: 'l' packets are sent repeatedly while a projectile is still in flight
+      // (bullet-drop weapons). Each snapshot shares the same projectile id, so we must
+      // only spawn a visual tracer the FIRST time we see a given id — otherwise the same
+      // single shot re-triggers a new tracer on every frame, making it look like the
+      // player is firing continuously even when they aren't.
       if (State.isPlaying && currentFrame.projectiles && !currentFrame._tracersSpawned) {
           currentFrame._tracersSpawned = true;
+          if (!Shared.seenProjectileIds) Shared.seenProjectileIds = new Set();
           currentFrame.projectiles.forEach(proj => {
+              const key = `${proj.ownerId}:${proj.id}`;
+              if (Shared.seenProjectileIds.has(key)) return;
+              Shared.seenProjectileIds.add(key);
               spawnProjectile(proj);
           });
       }

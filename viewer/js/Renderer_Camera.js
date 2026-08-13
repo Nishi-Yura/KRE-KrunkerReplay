@@ -36,14 +36,11 @@ export function updateCamera(delta, currentFrame) {
                 Shared.camera.lookAt(target.position);
             }
             
-            // Update HUD
-            if (classHud && currentFrame) {
-                const pData = currentFrame.players.find(p => p.id === State.targetPlayerId);
-                if (pData) {
-                    const className = KRUNKER_CLASSES[pData.classId] || `Class ${pData.classId}`;
-                    classHud.style.display = 'block';
-                    classHud.innerHTML = `Spectating: <span style="color:#00ff88">${pData.name || `Player ${pData.id}`}</span><br><span style="font-size:12px; opacity:0.8">${className}</span>`;
-                }
+            // Just ensure the HUD is visible; its content (name/class/HP/stats)
+            // is filled in by updateDynamicHUD() in Renderer_UI.js, which runs
+            // later in the frame and includes the HP bar + live scoreboard stats.
+            if (classHud) {
+                classHud.style.display = 'block';
             }
         } else {
             if (classHud) classHud.style.display = 'none';
