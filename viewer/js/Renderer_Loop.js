@@ -94,7 +94,7 @@ export function animate() {
               if (!mesh.visible) return;
               
               _targetPos.set(p.pos[0], p.pos[1], p.pos[2]);
-              let targetYaw = p.rot[1] || 0;
+              let targetYaw = p.rot[0] || 0;
               
               if (nextFrame) {
                   const nextP = nextFrame.players.find(x => x.id === p.id);
@@ -103,7 +103,7 @@ export function animate() {
                       if (_targetPos.distanceTo(_nextPos) < 100) { 
                           _targetPos.lerp(_nextPos, lerpFactor);
                           
-                          const nextYaw = nextP.rot[1] || 0;
+                          const nextYaw = nextP.rot[0] || 0;
                           let diff = nextYaw - targetYaw;
                           while (diff < -Math.PI) diff += Math.PI * 2;
                           while (diff > Math.PI) diff -= Math.PI * 2;

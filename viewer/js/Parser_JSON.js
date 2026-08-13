@@ -279,7 +279,7 @@ export function parseJSONLog(jsonString) {
       else if (ev && ev[2] === true && op === 'en') {
           const pData = payload[1];
           if (Array.isArray(pData) && pData.length >= 7) {
-              if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, hasSpawned: true, maxHealth: 100, aim: false, isValid: true };
+              if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
               playersMap[0].hasSpawned = true;
               let px = pData[4]; let py = pData[5]; let pz = pData[6];
               if (typeof px === 'number' && typeof py === 'number' && typeof pz === 'number') {
@@ -293,7 +293,7 @@ export function parseJSONLog(jsonString) {
           }
       }
       else if (op === 'kre_local') {
-          if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, hasSpawned: true, maxHealth: 100, aim: false, isValid: true };
+          if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, pos: [0,0,0], rot: [0,0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
           playersMap[0].hasSpawned = true;
           playersMap[0].pos = [payload[1], payload[2], payload[3]];
           playersMap[0].rot = [payload[4], payload[5]];

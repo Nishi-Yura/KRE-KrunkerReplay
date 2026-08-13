@@ -602,14 +602,14 @@
           mesh.visible = p.health !== 0;
           if (!mesh.visible) return;
           _targetPos.set(p.pos[0], p.pos[1], p.pos[2]);
-          let targetYaw = p.rot[1] || 0;
+          let targetYaw = p.rot[0] || 0;
           if (nextFrame) {
             const nextP = nextFrame.players.find((x) => x.id === p.id);
             if (nextP && nextP.health > 0) {
               _nextPos.set(nextP.pos[0], nextP.pos[1], nextP.pos[2]);
               if (_targetPos.distanceTo(_nextPos) < 100) {
                 _targetPos.lerp(_nextPos, lerpFactor);
-                const nextYaw = nextP.rot[1] || 0;
+                const nextYaw = nextP.rot[0] || 0;
                 let diff = nextYaw - targetYaw;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1373,7 +1373,7 @@
       } else if (ev && ev[2] === true && op === "en") {
         const pData = payload[1];
         if (Array.isArray(pData) && pData.length >= 7) {
-          if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, hasSpawned: true, maxHealth: 100, aim: false, isValid: true };
+          if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
           playersMap[0].hasSpawned = true;
           let px = pData[4];
           let py = pData[5];
@@ -1389,7 +1389,7 @@
           }
         }
       } else if (op === "kre_local") {
-        if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, hasSpawned: true, maxHealth: 100, aim: false, isValid: true };
+        if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
         playersMap[0].hasSpawned = true;
         playersMap[0].pos = [payload[1], payload[2], payload[3]];
         playersMap[0].rot = [payload[4], payload[5]];
