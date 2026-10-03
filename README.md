@@ -26,32 +26,34 @@ Krunker.io の3Dリプレイを記録し、ブラウザ上で後から自由に�
    - `Shift / Space`: カメラの上下移動 (ローミング時)
    - プレイヤー名刺をクリックすると、そのプレイヤーの追従カメラになります。
 
-## 使い方 (Installer / Recorder)
-このツールをKrunkerクライアントにインストールして録画するには、以下の手順を実行してください。
+## 使い方 (録画: Userscript + 保存サーバー)
+実際に動作する録画手順です。
 
-1. Node.js がインストールされていることを確認します。
-2. `installer` フォルダに移動し、依存関係をインストールします。
-   ```bash
-   cd installer
-   npm install
-   ```
-3. インストールスクリプトを実行します。
-   ```bash
-   npm run install-kre
-   # または PowerShellで .\scripts\install.ps1 を実行
-   ```
-4. Krunker公式クライアントを起動すると、自動的に録画モジュールが読み込まれます。
-   - 録画されたファイルは `ドキュメント/KrunkerReplays/` フォルダに保存されます。
+1. Node.js をインストールし、`START_SAVE_SERVER.bat` を実行して保存サーバーを起動します（`node recorder/src/kre-save-server.js` でも可）。起動したままにしてください。
+2. ブラウザ拡張 Tampermonkey などに `recorder/kre-userscript.user.js` を登録します。
+3. krunker.io で試合に入り、`F7` で録画開始、もう一度 `F7` で停止して保存します（`F8` でデバッグ表示）。
+4. リプレイは `ドキュメント/KrunkerReplays/` に `.json` として保存されます。Viewer で開いてください。
 
-### アンインストール
-録画機能をKrunkerから削除して元に戻したい場合は、以下のコマンドを実行します。
+## 使い方 (Installer / Recorder: 実験的)
+`installer/` は Krunker 公式クライアントの `app.asar` に `recorder/preload/preload-injector.js` を組み込む試験的なツールです。録画ロジック自体は未完成のため、通常は上記の Userscript を使用してください。
+
 ```bash
-npm run uninstall-kre
+npm install
+npm run install:client     # 組み込み
+npm run uninstall:client   # バックアップから復元
+```
+
+## マップ変換 (GLB)
+マップJSONを頂点カラー付きの GLB に変換できます。
+```bash
+npm run convert:map -- map.json map.glb
+npm run convert:map -- -d path/to/maps   # ディレクトリ内の .json を一括変換
 ```
 
 ## 開発・ビルド
 ビューアー側のJSを変更した場合は、`esbuild` を使ってバンドルを再構築してください。
 ```bash
+npm install
 npx esbuild viewer/js/main.js --bundle --outfile=viewer/dist/bundle.js
 ```
 

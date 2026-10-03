@@ -62,8 +62,8 @@ class Sideloader {
 
             // 4. recorder-preload.js をコピー
             console.log('[KRE Installer] preloadスクリプトをコピー中...');
-            // ../../recorder/preload-injector.js のパスを特定
-            const preloadInjectorPath = path.join(__dirname, '..', '..', 'recorder', 'preload-injector.js');
+            // recorder/preload/preload-injector.js のパスを特定
+            const preloadInjectorPath = path.join(__dirname, '..', '..', 'recorder', 'preload', 'preload-injector.js');
             const destPreloadPath = path.join(path.dirname(targetMainJs), 'recorder-preload.js');
             
             if (fs.existsSync(preloadInjectorPath)) {
