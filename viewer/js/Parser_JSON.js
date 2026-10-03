@@ -10,21 +10,26 @@ function isPlaceholderName(name) {
     return name.startsWith('Guest_') || name.startsWith('Player ');
 }
 
-function detectMetaStride(pArr) {
-    const candidates = [53, 51, 52, 54, 50, 55, 56, 49, 48];
-    for (const s of candidates) {
-        if (pArr.length === 0 || pArr.length % s !== 0) continue;
-        let ok = true;
-        for (let i = 0; i < pArr.length; i += s) {
-            if (typeof pArr[i + 1] !== 'number' || typeof pArr[i + 5] !== 'string') { ok = false; break; }
+// 0-packet の1人分は版や状態で長さが変わる (51 / 52 / 53 ...) うえ、同一パケット内でも混在する。
+// 固定ストライドは使わず、「[accountId(str), id(int), x, y, z, name(str), classId, maxHp, hp, team]」の
+// 並びに一致する位置を先頭から探して1人分とみなす
+const META_MIN_LEN = 40;
+function isMetaStart(a, i) {
+    return typeof a[i] === 'string' && Number.isInteger(a[i + 1]) && a[i + 1] >= 0 &&
+        typeof a[i + 2] === 'number' && typeof a[i + 3] === 'number' && typeof a[i + 4] === 'number' &&
+        typeof a[i + 5] === 'string' &&
+        typeof a[i + 6] === 'number' && typeof a[i + 7] === 'number' && typeof a[i + 8] === 'number';
+}
+
+function findMetaStarts(pArr) {
+    const starts = [];
+    for (let i = 0; i + 9 <= pArr.length; i++) {
+        if (isMetaStart(pArr, i)) {
+            starts.push(i);
+            i += META_MIN_LEN - 1;
         }
-        if (ok) return s;
     }
-    // 長さが割り切れない場合は、最初の2人分の位置から推定する
-    for (let s = 40; s <= 70; s++) {
-        if (typeof pArr[s + 1] === 'number' && typeof pArr[s] === 'string' && typeof pArr[s + 5] === 'string') return s;
-    }
-    return pArr.length || 53;
+    return starts;
 }
 
 // 文字列(JSON)またはパース済み配列を受け取る。巨大ファイルの二重パースを避けるため
@@ -62,6 +67,12 @@ export function parseJSONLog(input) {
             if (t < minTime) minTime = t;
         }
     });
+
+    // 自分の軌跡の復元用 (l: 位置+速度, q: 視線)
+    const localSamples = [];
+    const localLook = [];
+    let localName = null;
+    let localId = null;
 
     // Track which IDs have received 'k' packets (real position data)
     const hasKPacket = {};
@@ -101,8 +112,7 @@ export function parseJSONLog(input) {
         else if (op === '0' && payload[1]) {
             const pArr = payload[1];
             if (!Array.isArray(pArr)) return;
-            const stride = detectMetaStride(pArr);
-            for (let i = 0; i + 9 <= pArr.length; i += stride) {
+            for (const i of findMetaStarts(pArr)) {
                 const sid = pArr[i + 1];
                 if (typeof sid !== 'number') continue;
                 if (!playersMap[sid]) {
@@ -111,6 +121,7 @@ export function parseJSONLog(input) {
                 const p = playersMap[sid];
                 if (typeof pArr[i + 5] === 'string' && pArr[i + 5]) {
                     p.name = pArr[i + 5];
+                    if (localName && p.name === localName) localId = sid;
                     p.isValid = true; // 実名があるので有効なプレイヤー
                 }
                 if (typeof pArr[i + 6] === 'number') {
@@ -165,29 +176,9 @@ export function parseJSONLog(input) {
             }
             pushFrame(t);
         }
-        // ===== ai-packet: AI/other player positions =====
-        else if (op === 'ai' && payload.length > 1) {
-            const pArr = Array.isArray(payload[1]) ? payload[1] : payload.slice(1);
-            for (let i = 0; i < pArr.length; i += 9) {
-                const sid = pArr[i];
-                if (sid === undefined) continue;
-                // Skip players that already have k-packet data (higher quality)
-                if (hasKPacket[sid]) continue;
-
-                if (!playersMap[sid]) {
-                    playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0, 0, 0], rot: [0, 0], hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
-                }
-                // AI players should be spawned and visible
-                playersMap[sid].hasSpawned = true;
-                playersMap[sid].pos = [pArr[i + 1], pArr[i + 2], pArr[i + 3]];
-                const yaw = pArr[i + 4] * Math.PI / 180;
-                const pitch = pArr[i + 5] * Math.PI / 180;
-                playersMap[sid].rot = [yaw, pitch];
-            }
-            // Always push frame for ai updates (override lastFrameTime dedup)
-            lastFrameTime = -1; // Reset to force push
-            pushFrame(t);
-        }
+        // ===== ai-packet: ボット/ターゲット (aai で追加される別エンティティ) =====
+        // ID はプレイヤーIDと別名前空間で衝突する (ai の id 0〜8 と k の id 1〜7 が重なる) ため、
+        // プレイヤーとしては扱わない。混ぜると灰色の幽霊 Guest や位置の上書きが起きる
         // ===== h-packet: Health update =====
         else if (op === 'h') {
             const hp = payload[1];
@@ -279,25 +270,25 @@ export function parseJSONLog(input) {
             const local = playersMap[0];
             if (local && local.health <= 0) local.health = local.maxHealth || 100;
         }
-        // ===== l-packet: Projectile data =====
-        else if (op === 'l' && payload[1] && Array.isArray(payload[1])) {
-            const pArr = payload[1];
-            if (pArr.length >= 26) {
-                const projs = [];
-                // 1発あたりの長さは 26 (旧) / 27 (現行) のうち、割り切れる方を使う
-                const stride = pArr.length % 27 === 0 ? 27 : 26;
-                for (let i = 0; i + stride - 1 < pArr.length; i += stride) {
-                    projs.push({
-                        id: pArr[i],
-                        ownerId: pArr[i + 1],
-                        pos: [pArr[i + 2], pArr[i + 3], pArr[i + 4]]
-                    });
-                }
-                const currentFramePlayers = Object.values(playersMap)
-                    .filter(p => p.hasSpawned)
-                    .map(p => clonePlayer(p));
-                Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
+        // ===== l-packet: 自分自身の状態 (約1Hz) =====
+        // [seq, ping, x, y, z, vy, vx, vz, yaw, ...] 速度は units/ms。k-packet には自分が含まれないので、
+        // これと q-packet (自分の入力) から自分の軌跡を復元する。弾の情報ではない
+        else if (op === 'l' && !ev[2] && Array.isArray(payload[1]) && payload[1].length >= 26) {
+            const a = payload[1];
+            if ([2, 3, 4, 5, 6, 7].every(k => typeof a[k] === 'number')) {
+                localSamples.push({ t, x: a[2], y: a[3], z: a[4], vy: a[5], vx: a[6], vz: a[7], yaw: a[8] });
             }
+        }
+        // ===== q-packet (クライアント→サーバー): 入力。[pitch*1000, yaw*1000, ...] =====
+        else if (op === 'q' && ev[2] && Array.isArray(payload[5]) && payload[5].length >= 2 &&
+                 typeof payload[5][0] === 'number' && typeof payload[5][1] === 'number') {
+            localLook.push({ t, pitch: payload[5][0] / 1000, yaw: payload[5][1] / 1000 });
+        }
+        else if (op === 'sb' && payload[1] === 'welc' && typeof payload[2] === 'string') {
+            localName = payload[2];
+        }
+        else if (op === 'a' && typeof payload[3] === 'string' && !localName) {
+            localName = payload[3];
         }
         else if (op === 'l_parsed' && payload.length > 1) {
             const projs = payload[1];
@@ -347,11 +338,51 @@ export function parseJSONLog(input) {
         }
     });
 
+    // 自分 (k-packet に出てこない) を l/q から補間して全フレームに足す
+    if (localId !== null && localSamples.length && playersMap[localId] && Shared.realFrames.length) {
+        const me = playersMap[localId];
+        me.isValid = true;
+        const samples = localSamples;
+        const looks = localLook;
+        const kills = (Shared.events || []).filter(e => e.type === 'kill' && e.victim === localId).map(e => e.timestamp);
+        // 死亡区間: リスポーン時刻のパケットが無いので、死亡から3秒を目安にする
+        const deadRanges = kills.map(tk => [tk, tk + 3000]);
+        let si = 0, li = 0;
+        const hermite = (p0, p1, m0, m1, u) => {
+            const u2 = u * u, u3 = u2 * u;
+            return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
+        };
+        Shared.realFrames.forEach(f => {
+            const t = f.timestamp + minTime;
+            while (si + 1 < samples.length && samples[si + 1].t <= t) si++;
+            const s0 = samples[si], s1 = samples[si + 1];
+            let pos;
+            if (s1 && t >= s0.t && s1.t - s0.t <= 1500) {
+                const dt = s1.t - s0.t, u = (t - s0.t) / dt;
+                pos = [hermite(s0.x, s1.x, s0.vx * dt, s1.vx * dt, u),
+                       hermite(s0.y, s1.y, s0.vy * dt, s1.vy * dt, u),
+                       hermite(s0.z, s1.z, s0.vz * dt, s1.vz * dt, u)];
+            } else {
+                pos = [s0.x, s0.y, s0.z];
+            }
+            while (li + 1 < looks.length && looks[li + 1].t <= t) li++;
+            const look = looks[li];
+            const dead = deadRanges.some(r => t >= r[0] && t < r[1]);
+            f.players.push({
+                id: localId, name: me.name, team: me.team,
+                pos, rot: [look ? look.yaw : s0.yaw, look ? look.pitch : 0],
+                health: dead ? 0 : (me.maxHealth || 100), maxHealth: me.maxHealth || 100,
+                hasSpawned: true, shoot: false, aim: false, isValid: true, classId: me.classId
+            });
+        });
+    }
+
     if (Shared.realFrames.length > 0) {
         // BACKFILL: propagate best-known name and team to ALL frames
         const finalInfo = {};
         // First pass: collect from playersMap (has 0-packet info)
         Object.values(playersMap).forEach(p => {
+            if (!p.isValid) return;
             const key = String(p.id);
             if (!finalInfo[key]) finalInfo[key] = { name: null, team: null, classId: null, maxHealth: null };
             if (typeof p.name === 'string' && p.name) {

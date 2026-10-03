@@ -30696,23 +30696,19 @@
   function isPlaceholderName(name) {
     return name.startsWith("Guest_") || name.startsWith("Player ");
   }
-  function detectMetaStride(pArr) {
-    const candidates = [53, 51, 52, 54, 50, 55, 56, 49, 48];
-    for (const s of candidates) {
-      if (pArr.length === 0 || pArr.length % s !== 0) continue;
-      let ok = true;
-      for (let i = 0; i < pArr.length; i += s) {
-        if (typeof pArr[i + 1] !== "number" || typeof pArr[i + 5] !== "string") {
-          ok = false;
-          break;
-        }
+  var META_MIN_LEN = 40;
+  function isMetaStart(a, i) {
+    return typeof a[i] === "string" && Number.isInteger(a[i + 1]) && a[i + 1] >= 0 && typeof a[i + 2] === "number" && typeof a[i + 3] === "number" && typeof a[i + 4] === "number" && typeof a[i + 5] === "string" && typeof a[i + 6] === "number" && typeof a[i + 7] === "number" && typeof a[i + 8] === "number";
+  }
+  function findMetaStarts(pArr) {
+    const starts = [];
+    for (let i = 0; i + 9 <= pArr.length; i++) {
+      if (isMetaStart(pArr, i)) {
+        starts.push(i);
+        i += META_MIN_LEN - 1;
       }
-      if (ok) return s;
     }
-    for (let s = 40; s <= 70; s++) {
-      if (typeof pArr[s + 1] === "number" && typeof pArr[s] === "string" && typeof pArr[s + 5] === "string") return s;
-    }
-    return pArr.length || 53;
+    return starts;
   }
   function parseJSONLog(input) {
     let data = [];
@@ -30743,6 +30739,10 @@
         if (t < minTime) minTime = t;
       }
     });
+    const localSamples = [];
+    const localLook = [];
+    let localName = null;
+    let localId = null;
     const hasKPacket = {};
     let lastFrameTime = -1;
     const clonePlayer = (p) => ({
@@ -30774,8 +30774,7 @@
       } else if (op === "0" && payload[1]) {
         const pArr = payload[1];
         if (!Array.isArray(pArr)) return;
-        const stride = detectMetaStride(pArr);
-        for (let i = 0; i + 9 <= pArr.length; i += stride) {
+        for (const i of findMetaStarts(pArr)) {
           const sid = pArr[i + 1];
           if (typeof sid !== "number") continue;
           if (!playersMap[sid]) {
@@ -30784,6 +30783,7 @@
           const p = playersMap[sid];
           if (typeof pArr[i + 5] === "string" && pArr[i + 5]) {
             p.name = pArr[i + 5];
+            if (localName && p.name === localName) localId = sid;
             p.isValid = true;
           }
           if (typeof pArr[i + 6] === "number") {
@@ -30829,23 +30829,6 @@
             playersMap[sid].health = pArr[i + 12];
           }
         }
-        pushFrame(t);
-      } else if (op === "ai" && payload.length > 1) {
-        const pArr = Array.isArray(payload[1]) ? payload[1] : payload.slice(1);
-        for (let i = 0; i < pArr.length; i += 9) {
-          const sid = pArr[i];
-          if (sid === void 0) continue;
-          if (hasKPacket[sid]) continue;
-          if (!playersMap[sid]) {
-            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, health: 100, pos: [0, 0, 0], rot: [0, 0], hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
-          }
-          playersMap[sid].hasSpawned = true;
-          playersMap[sid].pos = [pArr[i + 1], pArr[i + 2], pArr[i + 3]];
-          const yaw = pArr[i + 4] * Math.PI / 180;
-          const pitch = pArr[i + 5] * Math.PI / 180;
-          playersMap[sid].rot = [yaw, pitch];
-        }
-        lastFrameTime = -1;
         pushFrame(t);
       } else if (op === "h") {
         const hp = payload[1];
@@ -30915,21 +30898,17 @@
       } else if (op === "crsp") {
         const local = playersMap[0];
         if (local && local.health <= 0) local.health = local.maxHealth || 100;
-      } else if (op === "l" && payload[1] && Array.isArray(payload[1])) {
-        const pArr = payload[1];
-        if (pArr.length >= 26) {
-          const projs = [];
-          const stride = pArr.length % 27 === 0 ? 27 : 26;
-          for (let i = 0; i + stride - 1 < pArr.length; i += stride) {
-            projs.push({
-              id: pArr[i],
-              ownerId: pArr[i + 1],
-              pos: [pArr[i + 2], pArr[i + 3], pArr[i + 4]]
-            });
-          }
-          const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => clonePlayer(p));
-          Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
+      } else if (op === "l" && !ev[2] && Array.isArray(payload[1]) && payload[1].length >= 26) {
+        const a = payload[1];
+        if ([2, 3, 4, 5, 6, 7].every((k) => typeof a[k] === "number")) {
+          localSamples.push({ t, x: a[2], y: a[3], z: a[4], vy: a[5], vx: a[6], vz: a[7], yaw: a[8] });
         }
+      } else if (op === "q" && ev[2] && Array.isArray(payload[5]) && payload[5].length >= 2 && typeof payload[5][0] === "number" && typeof payload[5][1] === "number") {
+        localLook.push({ t, pitch: payload[5][0] / 1e3, yaw: payload[5][1] / 1e3 });
+      } else if (op === "sb" && payload[1] === "welc" && typeof payload[2] === "string") {
+        localName = payload[2];
+      } else if (op === "a" && typeof payload[3] === "string" && !localName) {
+        localName = payload[3];
       } else if (op === "l_parsed" && payload.length > 1) {
         const projs = payload[1];
         const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => clonePlayer(p));
@@ -30970,9 +30949,56 @@
         processPayload(t, payload, ev);
       }
     });
+    if (localId !== null && localSamples.length && playersMap[localId] && Shared.realFrames.length) {
+      const me = playersMap[localId];
+      me.isValid = true;
+      const samples = localSamples;
+      const looks = localLook;
+      const kills = (Shared.events || []).filter((e) => e.type === "kill" && e.victim === localId).map((e) => e.timestamp);
+      const deadRanges = kills.map((tk) => [tk, tk + 3e3]);
+      let si = 0, li = 0;
+      const hermite = (p0, p1, m0, m1, u) => {
+        const u2 = u * u, u3 = u2 * u;
+        return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
+      };
+      Shared.realFrames.forEach((f) => {
+        const t = f.timestamp + minTime;
+        while (si + 1 < samples.length && samples[si + 1].t <= t) si++;
+        const s0 = samples[si], s1 = samples[si + 1];
+        let pos;
+        if (s1 && t >= s0.t && s1.t - s0.t <= 1500) {
+          const dt = s1.t - s0.t, u = (t - s0.t) / dt;
+          pos = [
+            hermite(s0.x, s1.x, s0.vx * dt, s1.vx * dt, u),
+            hermite(s0.y, s1.y, s0.vy * dt, s1.vy * dt, u),
+            hermite(s0.z, s1.z, s0.vz * dt, s1.vz * dt, u)
+          ];
+        } else {
+          pos = [s0.x, s0.y, s0.z];
+        }
+        while (li + 1 < looks.length && looks[li + 1].t <= t) li++;
+        const look = looks[li];
+        const dead = deadRanges.some((r) => t >= r[0] && t < r[1]);
+        f.players.push({
+          id: localId,
+          name: me.name,
+          team: me.team,
+          pos,
+          rot: [look ? look.yaw : s0.yaw, look ? look.pitch : 0],
+          health: dead ? 0 : me.maxHealth || 100,
+          maxHealth: me.maxHealth || 100,
+          hasSpawned: true,
+          shoot: false,
+          aim: false,
+          isValid: true,
+          classId: me.classId
+        });
+      });
+    }
     if (Shared.realFrames.length > 0) {
       const finalInfo = {};
       Object.values(playersMap).forEach((p) => {
+        if (!p.isValid) return;
         const key = String(p.id);
         if (!finalInfo[key]) finalInfo[key] = { name: null, team: null, classId: null, maxHealth: null };
         if (typeof p.name === "string" && p.name) {
