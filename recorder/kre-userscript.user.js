@@ -144,6 +144,15 @@
     // WebSocket Hook
     // =====================
     let recentPackets = [];
+    // 診断用: 直近のネットワークリクエスト (マップ取得経路の特定に使う。F8で表示)
+    const requestLog = [];
+    function logRequest(kind, url, size, type) {
+        try {
+            requestLog.push({ kind, url: String(url).slice(0, 160), size, type });
+            if (requestLog.length > 60) requestLog.shift();
+        } catch (e) {}
+    }
+
     let currentMapJSON = null; // マップデータを保持
     function setMapJSON(parsed) {
         const isNew = parsed !== currentMapJSON;
@@ -155,6 +164,10 @@
         function interceptMessage(e) {
             try {
                 if (e.data instanceof ArrayBuffer) {
+                    // 自動録画: ゲームサーバーの最初のバイナリパケットで開始する。
+                    // 全員の名前 (0-packet) は接続直後に届くので、ここから録るのが一番取りこぼしが少ない。
+                    // (マップの取得を待つ方式だと、クライアントによっては検知できず録画が始まらない)
+                    if (!recording && autoRecord) startRecording(true);
                     if (recording) {
                         // 受信時は生バイトのまま保持し、Base64化は保存時にまとめて行う (メモリ約25%減・負荷分散)
                         frames.push([Date.now(), new Uint8Array(e.data)]);
@@ -229,6 +242,7 @@
             const url = typeof args[0] === 'string' ? args[0] : (args[0] ? args[0].url : '');
             const response = await origFetch.apply(this, args);
             try {
+                logRequest('fetch', url, response.headers.get('content-length'), response.headers.get('content-type'));
                 if (url && (url.includes('.json') || url.includes('/maps/') || url.includes('p=map'))) {
                     const clone = response.clone();
                     const text = await clone.text();
@@ -254,6 +268,7 @@
         window.XMLHttpRequest.prototype.send = function(...args) {
             this.addEventListener('load', function() {
                 try {
+                    logRequest('xhr', this._kreUrl, (this.responseText || '').length, this.getResponseHeader('content-type'));
                     if (this.responseType === '' || this.responseType === 'text') {
                         const text = this.responseText;
                         if (text && (text.includes('"xyz"') || text.includes('"objects"'))) {
@@ -395,8 +410,10 @@
 
         if (e.key === 'F8') {
             log('===== DEBUG =====');
-            log(`Recording: ${recording}, Saved frames: ${frames.length}, Auto: ${autoRecord}`);
-            alert(`F8 Debug - Check console.\nRecorded frames: ${frames.length}`);
+            log(`Recording: ${recording}, Saved frames: ${frames.length}, Auto: ${autoRecord}, Map: ${currentMapJSON ? currentMapJSON.name : 'none'}`);
+            console.table(requestLog);
+            const interesting = requestLog.filter(r => /map|json|krunker|assets/i.test(r.url)).slice(-12);
+            alert(`F8 Debug\nRecorded frames: ${frames.length}\nMap: ${currentMapJSON ? currentMapJSON.name : 'none'}\n\nRecent requests:\n` + interesting.map(r => `${r.kind} ${r.url} (${r.size})`).join('\n'));
         }
 
         if (e.key === 'F9') {

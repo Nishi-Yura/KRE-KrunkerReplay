@@ -36,8 +36,16 @@ Krunker.io の3Dリプレイを記録し、ブラウザ上で後から自由に�
 3. krunker.io で試合に入ると自動で録画が始まり、試合を抜けて接続が切れると保存されます（200パケット未満の短い録画は破棄）。`F7` で手動の開始/停止、`F9` で自動録画のON/OFF、`F8` でデバッグ表示。
 4. リプレイは `ドキュメント/KrunkerReplays/` に `.json` として保存されます。Viewer で開いてください。
 
-## 使い方 (Electron クライアントへの組み込み: Glorp など)
-Krunker を Electron クライアント (Glorp など) で遊んでいる場合は、クライアントに録画モジュールを組み込めます。
+## 使い方 (Glorp: WebView2 版)
+最近の Glorp は Electron ではなく WebView2 (`glorp.exe` + `resources/bundle.js`) で動くため、下の「Electron クライアントへの組み込み」は使えません。
+代わりに Glorp のスクリプトフォルダ (`ドキュメント\glorp\scripts`) に Userscript を置きます。
+
+1. `START_SAVE_SERVER.bat` を起動したままにする
+2. `recorder/kre-userscript.user.js` を `ドキュメント\glorp\scripts` にコピーする
+3. Glorp を再起動し、試合に入って画面左上に録画ステータスが出るか確認する
+
+## 使い方 (Electron クライアントへの組み込み)
+Electron ベースのクライアント (`resources/app.asar` を持つもの) では、クライアントに録画モジュールを組み込めます。
 Userscript と同じ録画スクリプトをゲームページに注入し、保存はクライアント内で直接行うので、保存サーバーは不要です。
 
 ```bash

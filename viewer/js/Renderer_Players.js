@@ -101,7 +101,7 @@ export function setupRealPlayers() {
             const f = Shared.realFrames[i];
             const p = f.players.find(x => x.id === id);
             if(p) {
-                if(p.name && !p.name.startsWith('Player ')) pName = p.name;
+                if(typeof p.name === 'string' && p.name && !p.name.startsWith('Player ')) pName = p.name;
                 if(p.team !== undefined) team = p.team;
                 if(p.classId !== undefined && p.classId !== -1) {
                     classId = p.classId;
