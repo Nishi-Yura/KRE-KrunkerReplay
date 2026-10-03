@@ -1,18 +1,24 @@
 import { State, Shared, base64ToUint8Array } from './State.js';
 import { showToast } from './UI.js';
 import { setupRealPlayers } from './Renderer_Players.js';
-import { parseMapJSON } from './Parser_Map.js';
+import { parseMapData } from './Parser_Map.js';
+import { decodeMulti } from '@msgpack/msgpack';
 
-export function parseJSONLog(jsonString) {
+// 文字列(JSON)またはパース済み配列を受け取る。巨大ファイルの二重パースを避けるため
+export function parseJSONLog(input) {
     let data = [];
-    try {
-        data = JSON.parse(jsonString);
-    } catch (e) {
-        showToast('JSONのパースに失敗しました');
-        return false;
+    if (typeof input === 'string') {
+        try {
+            data = JSON.parse(input);
+        } catch (e) {
+            showToast('JSONのパースに失敗しました');
+            return false;
+        }
+    } else {
+        data = input;
     }
 
-    if (!data || !data.length) return false;
+    if (!Array.isArray(data) || !data.length) return false;
 
     if (data[0] && data[0].version) {
         Shared.replayHeader = data.shift();
@@ -20,6 +26,7 @@ export function parseJSONLog(jsonString) {
 
     Shared.realFrames = [];
     Shared.events = [];
+    Shared.seenProjectileIds = new Set();
     const playersMap = {};
     let maxTime = 0;
     let minTime = Infinity;
@@ -63,7 +70,7 @@ export function parseJSONLog(jsonString) {
         const op = payload[0];
 
         if (op === 'kre_map_data' && payload[1]) {
-            parseMapJSON(JSON.stringify(payload[1]));
+            parseMapData(payload[1]);
         }
         // ===== 0-packet: Player metadata (name, team, etc.) =====
         // Structure: [accountId, playerId, posX, posY, posZ, name, level, hp, maxHp, team, ...]
@@ -242,13 +249,10 @@ export function parseJSONLog(jsonString) {
         // ===== crsp-packet: Respawn with position =====
         else if (op === 'crsp') {
             // crsp: ['crsp', ?, respawnId, posX, posY, posZ, team, ?]
-            // This is for the local player (self) respawning
-            // Reset HP to 100 for players that just died
-            Object.values(playersMap).forEach(p => {
-                if (p.health <= 0) {
-                    p.health = 100;
-                }
-            });
+            // 自分自身のリスポーンなので、復活扱いにするのはローカルプレイヤー(id 0)だけ。
+            // 他プレイヤーのHPは k-packet が随時更新するため、ここで一括復活させない
+            const local = playersMap[0];
+            if (local && local.health <= 0) local.health = local.maxHealth || 100;
         }
         // ===== l-packet: Projectile data =====
         else if (op === 'l' && payload[1] && Array.isArray(payload[1])) {
@@ -323,7 +327,7 @@ export function parseJSONLog(jsonString) {
         if (typeof payload === 'string') {
             try {
                 const bytes = base64ToUint8Array(payload);
-                const iter = MessagePack.decodeMulti(bytes);
+                const iter = decodeMulti(bytes);
                 for (const p of iter) {
                     processPayload(t, p, ev);
                 }

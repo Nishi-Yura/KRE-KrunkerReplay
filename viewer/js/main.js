@@ -1,3 +1,4 @@
+import './three-global.js'; // 他のモジュールより先に評価させる
 import { initRenderer } from './Renderer_Scene.js';
 import { animate } from './Renderer_Loop.js';
 import { setupUI } from './UI.js';

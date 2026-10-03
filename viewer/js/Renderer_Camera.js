@@ -1,51 +1,51 @@
 import { State, Shared, keys } from './State.js';
-import { KRUNKER_CLASSES } from './Constants.js';
+
+const _dir = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const EYE_HEIGHT = 11.5; // 頭ブロックの中心
 
 export function updateCamera(delta, currentFrame) {
-    if (State.cameraMode === 'free') {
-        const moveSpeed = 100 * delta; 
-        const dir = new THREE.Vector3();
-        Shared.camera.getWorldDirection(dir);
-        dir.y = 0; 
-        dir.normalize();
-        
-        const right = new THREE.Vector3().crossVectors(dir, Shared.camera.up).normalize();
-        
-        if (keys.w) Shared.camera.position.addScaledVector(dir, moveSpeed);
-        if (keys.s) Shared.camera.position.addScaledVector(dir, -moveSpeed);
-        if (keys.a) Shared.camera.position.addScaledVector(right, -moveSpeed);
-        if (keys.d) Shared.camera.position.addScaledVector(right, moveSpeed);
-        if (keys.e) Shared.camera.position.y += moveSpeed;
-        if (keys.q) Shared.camera.position.y -= moveSpeed;
-    }
-    
-    let classHud = document.getElementById('class-hud');
+    const cam = Shared.camera;
 
-    if((State.cameraMode === '1st' || State.cameraMode === '3rd') && State.mode === 'real') {
-        const target = Shared.realMeshes[State.targetPlayerId];
-        if(target && target.visible !== false) {
-            if(State.cameraMode === '1st') {
-                Shared.camera.position.copy(target.position);
-                Shared.camera.position.y += 6; 
-                Shared.camera.rotation.copy(target.rotation);
-            } else {
-                // Position camera BEHIND the player
-                Shared.camera.position.x = target.position.x + Math.sin(target.rotation.y) * 30;
-                Shared.camera.position.z = target.position.z + Math.cos(target.rotation.y) * 30;
-                Shared.camera.position.y = target.position.y + 15;
-                Shared.camera.lookAt(target.position);
-            }
-            
-            // Just ensure the HUD is visible; its content (name/class/HP/stats)
-            // is filled in by updateDynamicHUD() in Renderer_UI.js, which runs
-            // later in the frame and includes the HP bar + live scoreboard stats.
-            if (classHud) {
-                classHud.style.display = 'block';
-            }
-        } else {
-            if (classHud) classHud.style.display = 'none';
-        }
-    } else {
-        if (classHud) classHud.style.display = 'none';
+    if (State.cameraMode === 'free') {
+        const moveSpeed = 100 * delta * (keys.shift ? 3 : 1);
+        cam.getWorldDirection(_dir);
+        _dir.y = 0;
+        _dir.normalize();
+        _right.crossVectors(_dir, cam.up).normalize();
+
+        if (keys.w) cam.position.addScaledVector(_dir, moveSpeed);
+        if (keys.s) cam.position.addScaledVector(_dir, -moveSpeed);
+        if (keys.a) cam.position.addScaledVector(_right, -moveSpeed);
+        if (keys.d) cam.position.addScaledVector(_right, moveSpeed);
+        if (keys.e) cam.position.y += moveSpeed;
+        if (keys.q) cam.position.y -= moveSpeed;
     }
+
+    const classHud = document.getElementById('class-hud');
+    let showHud = false;
+
+    if ((State.cameraMode === '1st' || State.cameraMode === '3rd') && State.mode === 'real') {
+        const target = Shared.realMeshes[State.targetPlayerId];
+        if (target && target.visible !== false) {
+            const yaw = target.rotation.y;
+            const pitch = target.userData.pitch || 0;
+            cam.rotation.order = 'YXZ'; // rotation.copy() で順序が壊れるのを防ぐ
+            if (State.cameraMode === '1st') {
+                cam.position.copy(target.position);
+                cam.position.y += EYE_HEIGHT;
+                cam.rotation.set(pitch, yaw, 0);
+            } else {
+                // プレイヤーの背後 (ホイールで距離調整)
+                const dist = State.camDistance;
+                cam.position.x = target.position.x + Math.sin(yaw) * dist;
+                cam.position.z = target.position.z + Math.cos(yaw) * dist;
+                cam.position.y = target.position.y + dist * 0.5;
+                cam.lookAt(target.position.x, target.position.y + 6, target.position.z);
+            }
+            showHud = true;
+        }
+    }
+
+    if (classHud) classHud.style.display = showHud ? 'block' : 'none';
 }

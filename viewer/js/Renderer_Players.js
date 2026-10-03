@@ -1,31 +1,70 @@
 import { State, Shared } from './State.js';
 import { KRUNKER_CLASSES } from './Constants.js';
+import { escapeHTML } from './Utils.js';
+import { setCameraMode } from './UI.js';
+import { resetNametags } from './Renderer_UI.js';
+import { clearTracers } from './Renderer_Tracers.js';
 
+// ジオメトリ/マテリアルは全プレイヤーで共有し、チーム色だけ差し替える
+const TORSO_GEO = new THREE.BoxGeometry(4, 5.5, 2.5);
+const LEG_GEO = new THREE.BoxGeometry(1.8, 5, 2).translate(0, -2.5, 0);   // 股関節を原点に
+const ARM_GEO = new THREE.BoxGeometry(1.2, 5, 1.2).translate(0, -2.5, 0); // 肩を原点に
+const HEAD_GEO = new THREE.BoxGeometry(3, 3, 3);
+const SIGHT_GEO = new THREE.BoxGeometry(0.5, 0.5, 15);
+const HEAD_MAT = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const LEG_MAT = new THREE.MeshLambertMaterial({ color: 0x333344 });
+const SIGHT_MAT = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const TEAM_COLORS = { 0: 0x0000ff, 1: 0xff8800, 2: 0x00ccff };
+const BODY_MATS = {};
+
+function bodyMaterial(team) {
+    const key = TEAM_COLORS[team] !== undefined ? team : 0;
+    if (!BODY_MATS[key]) BODY_MATS[key] = new THREE.MeshLambertMaterial({ color: TEAM_COLORS[key] });
+    return BODY_MATS[key];
+}
+
+// 全長は従来と同じ約13 (足元 y=0 〜 頭頂 y=13)。胴 → 腕 → 脚 → 頭 → 照準線の人型
 export function createPlayerMesh(team = 0) {
     const group = new THREE.Group();
-    
-    let bodyColor = 0x0000ff; // Default blue
-    if (team === 1) bodyColor = 0xff8800; // Orange
-    else if (team === 2) bodyColor = 0x00ccff; // Light Blue
-    const bodyGeo = new THREE.BoxGeometry(4, 10, 4);
-    const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 5;
-    group.add(body);
-    
-    const headGeo = new THREE.BoxGeometry(3, 3, 3);
-    const headMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const head = new THREE.Mesh(headGeo, headMat);
+    const mat = bodyMaterial(team);
+
+    const torso = new THREE.Mesh(TORSO_GEO, mat);
+    torso.position.y = 7.75;
+    group.add(torso);
+
+    const armL = new THREE.Mesh(ARM_GEO, mat);
+    armL.position.set(-2.6, 10, 0);
+    const armR = new THREE.Mesh(ARM_GEO, mat);
+    armR.position.set(2.6, 10, 0);
+    group.add(armL, armR);
+
+    const legL = new THREE.Mesh(LEG_GEO, LEG_MAT);
+    legL.position.set(-1, 5, 0);
+    const legR = new THREE.Mesh(LEG_GEO, LEG_MAT);
+    legR.position.set(1, 5, 0);
+    group.add(legL, legR);
+
+    const head = new THREE.Mesh(HEAD_GEO, HEAD_MAT);
     head.position.y = 11.5;
     group.add(head);
-    
-    const sightGeo = new THREE.BoxGeometry(0.5, 0.5, 15);
-    const sightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const sightMesh = new THREE.Mesh(sightGeo, sightMat);
+
+    const sightMesh = new THREE.Mesh(SIGHT_GEO, SIGHT_MAT);
     sightMesh.position.set(0, 11.5, -7.5);
     group.add(sightMesh);
-    
+
+    group.userData.team = team;
+    group.userData.teamParts = [torso, armL, armR];
+    group.userData.legs = [legL, legR];
+    group.userData.arms = [armL, armR];
+    group.userData.walkCycle = 0;
     return group;
+}
+
+export function setMeshTeam(mesh, team) {
+    if (mesh.userData.team === team) return;
+    mesh.userData.team = team;
+    const mat = bodyMaterial(team);
+    mesh.userData.teamParts.forEach(part => { part.material = mat; });
 }
 
 export function setupRealPlayers() {
@@ -36,9 +75,21 @@ export function setupRealPlayers() {
         Object.values(Shared.realMeshes).forEach(mesh => Shared.scene.remove(mesh));
     }
     Shared.realMeshes = {};
+    resetNametags();
+    clearTracers();
+    Shared.seenProjectileIds = new Set();
     
     const uniqueIds = new Set();
-    Shared.realFrames.forEach(f => f.players.forEach(p => uniqueIds.add(p.id)));
+    // ミニマップ用に全フレームを通した移動範囲を一度だけ求める
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    Shared.realFrames.forEach(f => f.players.forEach(p => {
+        uniqueIds.add(p.id);
+        if (p.pos[0] < minX) minX = p.pos[0];
+        if (p.pos[0] > maxX) maxX = p.pos[0];
+        if (p.pos[2] < minZ) minZ = p.pos[2];
+        if (p.pos[2] > maxZ) maxZ = p.pos[2];
+    }));
+    Shared.playBounds = isFinite(minX) ? { minX, maxX, minZ, maxZ } : null;
 
     const players = Array.from(uniqueIds).map(id => {
         let pName = `Player ${id}`;
@@ -128,19 +179,16 @@ export function setupRealPlayers() {
         div.style.color = '#fff';
         div.innerHTML = `
             <div style="padding: 4px 8px;">
-                <div class="player-name-text" style="font-size: 13px; font-weight: bold;">${p.pName}</div>
-                <div class="class-text" style="font-size: 10px; opacity: 0.8; margin-top: 2px;">${className}</div>
+                <div class="player-name-text" style="font-size: 13px; font-weight: bold;">${escapeHTML(p.pName)}</div>
+                <div class="class-text" style="font-size: 10px; opacity: 0.8; margin-top: 2px;">${escapeHTML(className)}</div>
             </div>
         `;
         div.onclick = () => { 
             State.targetPlayerId = p.id; 
-            State.cameraMode = '3rd'; 
             document.querySelectorAll('.player-card').forEach(el => el.classList.remove('active'));
             div.classList.add('active');
-            
-            // Show HUD
-            classHud.style.display = 'block';
-            classHud.innerHTML = `Spectating: <span style="color:#00ff88">${p.pName}</span><br><span style="font-size:12px; opacity:0.8">${className}</span>`;
+            // 追従視点へ切り替え (HUDの中身は updateDynamicHUD が毎フレーム更新する)
+            setCameraMode(State.cameraMode === '1st' ? '1st' : '3rd');
         };
         listContent.appendChild(div);
     });

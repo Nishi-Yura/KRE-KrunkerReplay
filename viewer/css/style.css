@@ -199,11 +199,22 @@ button:hover {
 /* スコアボード */
 #scoreboard {
   position: absolute;
-  top: 10%; left: 10%; width: 80%; height: 80%;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
   z-index: 50;
   display: none;
-  padding: 20px;
+  padding: 12px;
+  color: #fff;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
+#scoreboard.show { display: block !important; }
 
 /* トースト通知 (Toast) */
 #toast-container {
@@ -229,7 +240,6 @@ button:hover {
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
 
-.show { display: flex !important; }
 
 /* モーダル (Help / Landing) */
 .modal-overlay {

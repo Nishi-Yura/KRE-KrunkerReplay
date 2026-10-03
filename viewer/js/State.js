@@ -7,10 +7,11 @@ export const State = {
   cameraMode: 'free',
   targetPlayerId: 0,
   isSeeking: false,
-  showScoreboard: false
+  showScoreboard: false,
+  camDistance: 30
 };
 
-export const keys = { w: false, a: false, s: false, d: false, e: false, q: false };
+export const keys = { w: false, a: false, s: false, d: false, e: false, q: false, shift: false };
 
 export const Shared = {
   realFrames: [],

@@ -2,7 +2,7 @@
  * .kreファイルフォーマットの定数・型定義
  */
 const MAGIC_BYTES = Buffer.from([0x4B, 0x52, 0x45, 0x00]); // 'KRE\0'
-const VERSION = 0x03;
+const VERSION = 0x04; // v4: 座標 int32 / チャンク長プレフィックス
 const HEADER_SIZE = 64; // バイト
 
 const HeaderOffsets = {
@@ -32,7 +32,7 @@ const FieldSizes = {
 };
 
 // 1フレームの各プレイヤーのデータサイズ
-const FRAME_PLAYER_SIZE = 17;
+const FRAME_PLAYER_SIZE = 22;
 
 const GameModes = {
   FFA: 0,

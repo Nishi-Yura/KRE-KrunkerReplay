@@ -1,6 +1,9 @@
-import { Shared } from './State.js';
+import { State, Shared } from './State.js';
 
-// Reusable geometry and material for tracers (avoid per-tracer allocation)
+const TRACER_LIFETIME_MS = 400;
+const MAX_TRACERS = 300;
+
+// Reusable geometry for tracers (avoid per-tracer allocation)
 let _tracerGeo = null;
 function getTracerGeo() {
     if (!_tracerGeo) {
@@ -11,93 +14,89 @@ function getTracerGeo() {
     return _tracerGeo;
 }
 
-export function spawnTracer(mesh, p) {
-    const origin = mesh.position.clone();
-    origin.y += 5;
-    
-    const dir = new THREE.Vector3(0, 0, -1);
-    const euler = new THREE.Euler(p.rot[1] || 0, p.rot[0] || 0, 0, 'YXZ');
-    dir.applyEuler(euler);
-    
-    const tracerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1.0 });
-    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
-    
-    tracerMesh.position.copy(origin);
-    tracerMesh.rotation.order = 'YXZ';
-    tracerMesh.rotation.set(p.rot[1] || 0, p.rot[0] || 0, 0);
-    
-    Shared.scene.add(tracerMesh);
+function addTrail(mesh, origin, dir) {
     if (!Shared.trails) Shared.trails = [];
-    Shared.trails.push({ 
-        mesh: tracerMesh, 
-        createdAt: Date.now(),
+    // 連射で無制限に増えないよう古いものから捨てる
+    while (Shared.trails.length >= MAX_TRACERS) removeTrail(Shared.trails.shift());
+    Shared.scene.add(mesh);
+    Shared.trails.push({
+        mesh,
+        createdAt: State.time, // 実時間ではなくリプレイ時間基準 (一時停止・倍速・シークに追従)
         origin: origin.clone(),
         velocity: dir.multiplyScalar(800)
     });
+}
+
+function removeTrail(t) {
+    Shared.scene.remove(t.mesh);
+    if (t.mesh.material) t.mesh.material.dispose(); // ジオメトリは共有なので破棄しない
+}
+
+export function clearTracers() {
+    if (!Shared.trails) { Shared.trails = []; return; }
+    Shared.trails.forEach(removeTrail);
+    Shared.trails = [];
+}
+
+export function spawnTracer(mesh, p) {
+    const origin = mesh.position.clone();
+    origin.y += 5;
+
+    const dir = new THREE.Vector3(0, 0, -1);
+    const euler = new THREE.Euler(p.rot[1] || 0, p.rot[0] || 0, 0, 'YXZ');
+    dir.applyEuler(euler);
+
+    const tracerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1.0 });
+    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
+    tracerMesh.position.copy(origin);
+    tracerMesh.rotation.order = 'YXZ';
+    tracerMesh.rotation.set(p.rot[1] || 0, p.rot[0] || 0, 0);
+
+    addTrail(tracerMesh, origin, dir);
 }
 
 export function spawnProjectile(proj) {
     if (!proj || !proj.pos) return;
-    
+
     const origin = new THREE.Vector3(proj.pos[0], proj.pos[1], proj.pos[2]);
-    
-    // Find owner's direction from current frame to aim tracer correctly
-    // Since l-packet i+5,6,7 are NOT direction vectors (values too small ~0.01),
-    // we find the nearest player mesh and use their rotation
-    let dir = new THREE.Vector3(0, 0, -1); // default forward
-    if (proj.ownerId !== undefined) {
-        // Try to find owner mesh in any ID namespace
-        for (const [id, mesh] of Object.entries(Shared.realMeshes)) {
-            if (mesh && mesh.visible) {
-                const dist = origin.distanceTo(mesh.position);
-                if (dist < 30) { // If projectile origin is near this player, use their rotation
-                    dir.set(0, 0, -1);
-                    dir.applyQuaternion(mesh.quaternion);
-                    break;
-                }
-            }
+
+    // l-packet に方向ベクトルは無いため、所有者 (なければ近くのプレイヤー) の向きを使う
+    const dir = new THREE.Vector3(0, 0, -1);
+    let owner = proj.ownerId !== undefined ? Shared.realMeshes[proj.ownerId] : null;
+    if (!owner || !owner.visible) {
+        owner = null;
+        for (const mesh of Object.values(Shared.realMeshes)) {
+            if (mesh && mesh.visible && origin.distanceTo(mesh.position) < 30) { owner = mesh; break; }
         }
     }
-    
+    if (owner) dir.applyQuaternion(owner.quaternion);
+
     const tracerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 1.0 });
     const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
-    
     tracerMesh.position.copy(origin);
-    const lookTarget = origin.clone().add(dir);
-    tracerMesh.lookAt(lookTarget);
-    
-    Shared.scene.add(tracerMesh);
-    if (!Shared.trails) Shared.trails = [];
-    Shared.trails.push({ 
-        mesh: tracerMesh, 
-        createdAt: Date.now(),
-        origin: origin.clone(),
-        velocity: dir.multiplyScalar(800)
-    });
+    tracerMesh.lookAt(origin.clone().add(dir));
+
+    addTrail(tracerMesh, origin, dir);
 }
 
 export function updateTracers() {
-    if (!Shared.trails) Shared.trails = [];
-    const now = Date.now();
-    
+    if (!Shared.trails || Shared.trails.length === 0) return;
+
     for (let i = Shared.trails.length - 1; i >= 0; i--) {
         const t = Shared.trails[i];
-        const age = now - t.createdAt;
-        if (age > 400) {
-            Shared.scene.remove(t.mesh);
-            // Dispose material to prevent VRAM leak (geometry is shared)
-            if (t.mesh.material) t.mesh.material.dispose();
+        const ageMs = (State.time - t.createdAt) * 1000;
+        // ageMs < 0: 巻き戻し/ループで生成時刻より前に戻った
+        if (ageMs < 0 || ageMs > TRACER_LIFETIME_MS) {
+            removeTrail(t);
             Shared.trails.splice(i, 1);
         } else {
-            if (t.velocity) {
-                const scale = age / 1000;
-                t.mesh.position.set(
-                    t.origin.x + t.velocity.x * scale,
-                    t.origin.y + t.velocity.y * scale,
-                    t.origin.z + t.velocity.z * scale
-                );
-            }
-            t.mesh.material.opacity = 1.0 - (age / 400);
+            const scale = ageMs / 1000;
+            t.mesh.position.set(
+                t.origin.x + t.velocity.x * scale,
+                t.origin.y + t.velocity.y * scale,
+                t.origin.z + t.velocity.z * scale
+            );
+            t.mesh.material.opacity = 1.0 - (ageMs / TRACER_LIFETIME_MS);
         }
     }
 }
