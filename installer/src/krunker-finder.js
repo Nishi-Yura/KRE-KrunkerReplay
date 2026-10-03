@@ -1,6 +1,6 @@
 /**
  * krunker-finder.js
- * Krunkerクライアントのインストールパスを自動検出する
+ * Krunkerクライアント (公式 / Glorp 等のElectronクライアント) のインストールパスを自動検出する
  */
 
 const fs = require('fs');
@@ -8,54 +8,63 @@ const path = require('path');
 const os = require('os');
 
 /**
- * 指定されたディレクトリがKrunkerのインストールディレクトリか検証する
+ * 指定されたディレクトリが Electron クライアントのインストールディレクトリか検証する。
+ * クライアントごとに exe 名が異なる (krunker.exe / glorp.exe ...) ため、
+ * 「exe が1つ以上あり、resources/app.asar または resources/app/package.json がある」ことで判定する。
  * @param {string} dir 検証するディレクトリパス
  * @returns {boolean}
  */
 function validateKrunkerDir(dir) {
-    if (!dir || !fs.existsSync(dir)) return false;
-    
-    // app.asarが存在するか確認
-    const resourcesPath = path.join(dir, 'resources');
-    const asarPath = path.join(resourcesPath, 'app.asar');
-    
-    // Windows環境での実行ファイル(Krunker.exe)またはapp.asarの存在を確認
-    const hasExe = fs.existsSync(path.join(dir, 'Krunker.exe')) || fs.existsSync(path.join(dir, 'krunker.exe'));
-    const hasAsar = fs.existsSync(asarPath);
-    
-    return hasExe && hasAsar;
+    return !!describeInstall(dir);
 }
 
 /**
- * Krunkerのインストールパスを検索して返す
- * @returns {{installDir: string, asarPath: string, resourcesPath: string} | null}
+ * @param {string} dir
+ * @returns {{installDir: string, resourcesPath: string, asarPath: string, appDir: string, kind: 'asar'|'dir', exePath: string} | null}
+ */
+function describeInstall(dir) {
+    if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return null;
+
+    const resourcesPath = path.join(dir, 'resources');
+    const asarPath = path.join(resourcesPath, 'app.asar');
+    const appDir = path.join(resourcesPath, 'app');
+
+    let kind = null;
+    if (fs.existsSync(asarPath)) kind = 'asar';
+    else if (fs.existsSync(path.join(appDir, 'package.json'))) kind = 'dir';
+    if (!kind) return null;
+
+    const exe = fs.readdirSync(dir).find(f => /\.exe$/i.test(f) && !/^(uninstall|update)/i.test(f));
+    if (!exe) return null;
+
+    return { installDir: dir, resourcesPath, asarPath, appDir, kind, exePath: path.join(dir, exe) };
+}
+
+/**
+ * Krunkerクライアントのインストールパスを検索して返す
+ * @returns {ReturnType<typeof describeInstall>}
  */
 function findKrunkerPath() {
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-    
-    // 検索候補のパス
+
     const searchPaths = [
+        path.join(localAppData, 'glorp'),
+        path.join(localAppData, 'Programs', 'glorp'),
         path.join(localAppData, 'Programs', 'krunker'),
+        path.join(localAppData, 'Programs', 'Krunker'),
         'C:\\Program Files\\krunker',
         'C:\\Program Files (x86)\\krunker'
     ];
 
     for (const searchPath of searchPaths) {
-        if (validateKrunkerDir(searchPath)) {
-            const resourcesPath = path.join(searchPath, 'resources');
-            const asarPath = path.join(resourcesPath, 'app.asar');
-            return {
-                installDir: searchPath,
-                asarPath: asarPath,
-                resourcesPath: resourcesPath
-            };
-        }
+        const info = describeInstall(searchPath);
+        if (info) return info;
     }
-    
     return null;
 }
 
 module.exports = {
     findKrunkerPath,
-    validateKrunkerDir
+    validateKrunkerDir,
+    describeInstall
 };

@@ -360,19 +360,31 @@
         }
         if (currentMapJSON) log('Map data embedded in replay file.');
 
-        fetch(SAVE_SERVER, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-KRE-Map': 'unknown',
-                'X-KRE-Version': VERSION
-            },
-            body: buildPayload(list)
-        }).then(res => {
+        saveBlob(buildPayload(list)).then(res => {
             if (res.ok) toast(`✅ 保存完了 (${list.length} pkts)`);
             else toast('❌ サーバーエラー', false);
         }).catch(() => {
-            alert('❌ 保存サーバーに接続できません。\nSTART_SAVE_SERVER.bat が起動しているか確認してください。');
+            alert('❌ 保存に失敗しました。\nSTART_SAVE_SERVER.bat が起動しているか確認してください。');
+        });
+    }
+
+    // Electron クライアントに組み込まれている場合は IPC で直接保存し、
+    // ブラウザ(Tampermonkey)では従来どおりローカル保存サーバーへ POST する
+    async function saveBlob(blob) {
+        const filename = `krunker_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.json`;
+        if (window.kreNative && typeof window.kreNative.save === 'function') {
+            const result = await window.kreNative.save(filename, await blob.arrayBuffer());
+            return { ok: !!(result && result.ok) };
+        }
+        return fetch(SAVE_SERVER, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Filename': filename,
+                'X-KRE-Map': 'unknown',
+                'X-KRE-Version': VERSION
+            },
+            body: blob
         });
     }
 

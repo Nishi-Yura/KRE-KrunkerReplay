@@ -1,11 +1,8 @@
 {
   "name": "@krunker-replay/recorder",
   "version": "1.0.0",
-  "description": "Krunker Replay Recorder - Electron Main Process Module",
-  "main": "src/index.js",
+  "description": "Krunker Replay Recorder - userscript, Electron main hook and preload",
+  "main": "src/kre-main-hook.js",
   "type": "commonjs",
-  "dependencies": {
-    "@krunker-replay/shared": "file:../shared",
-    "semver": "^7.8.5"
-  }
+  "dependencies": {}
 }

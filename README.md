@@ -11,8 +11,8 @@ Krunker.io の3Dリプレイを記録し、ブラウザ上で後から自由に�
 - **ミニマップ**: 上空からのミニマップ描画機能。
 
 ## フォルダ構成
-- `installer/` : Krunker公式クライアントに録画機能を組み込むためのインストーラ (Electron asar書き換えツール)
-- `recorder/` : バックグラウンドで動作し、Krunker内の座標やイベントを収集・保存する記録モジュール
+- `installer/` : Electron クライアント (Glorp など) に録画機能を組み込むインストーラと診断ツール
+- `recorder/` : 録画モジュール。Userscript、Electron メインプロセス用フック、preload、保存サーバー、`.kre` ライター
 - `viewer/` : 記録されたリプレイファイル（JSON）を読み込み、THREE.jsを使ってブラウザ上で再生するビューアー
 - `shared/` : レコーダーとビューアーで共通の定数や型定義（未使用部分も含む）
 
@@ -36,14 +36,27 @@ Krunker.io の3Dリプレイを記録し、ブラウザ上で後から自由に�
 3. krunker.io で試合に入ると自動で録画が始まり、試合を抜けて接続が切れると保存されます（200パケット未満の短い録画は破棄）。`F7` で手動の開始/停止、`F9` で自動録画のON/OFF、`F8` でデバッグ表示。
 4. リプレイは `ドキュメント/KrunkerReplays/` に `.json` として保存されます。Viewer で開いてください。
 
-## 使い方 (Installer / Recorder: 実験的)
-`installer/` は Krunker 公式クライアントの `app.asar` に `recorder/preload/preload-injector.js` を組み込む試験的なツールです。録画ロジック自体は未完成のため、通常は上記の Userscript を使用してください。
+## 使い方 (Electron クライアントへの組み込み: Glorp など)
+Krunker を Electron クライアント (Glorp など) で遊んでいる場合は、クライアントに録画モジュールを組み込めます。
+Userscript と同じ録画スクリプトをゲームページに注入し、保存はクライアント内で直接行うので、保存サーバーは不要です。
 
 ```bash
 npm install
-npm run install:client     # 組み込み
-npm run uninstall:client   # バックアップから復元
+
+# 1. 構造の診断 (ファイルは変更しない。kre-inspect-report.json を出力)
+node installer/src/inspect-client.js "C:\Users\<you>\AppData\Local\glorp"
+
+# 2. 組み込み (パス省略時は自動検出。事前に app.asar をバックアップします)
+npm run install:client -- "C:\Users\<you>\AppData\Local\glorp"
+
+# 元に戻す (バックアップから復元)
+npm run uninstall:client -- "C:\Users\<you>\AppData\Local\glorp"
 ```
+
+- 組み込み後にクライアントを再起動すると、試合開始で自動録画し、試合を抜けると `ドキュメント/KrunkerReplays/` に保存されます（画面左上に録画ステータスを表示）。
+- クライアントの更新で `app.asar` が置き換わると組み込みは消えます。再度インストールしてください。
+- asar 整合性検証 (Electron Fuse) が有効なクライアントは、起動できなくなるため組み込みを中止します。
+- うまくいかない場合は `kre-inspect-report.json` の内容を共有してください。
 
 ## マップ変換 (GLB)
 マップJSONを頂点カラー付きの GLB に変換できます。
