@@ -14,7 +14,7 @@ const path = require('path');
 const os = require('os');
 const asar = require('@electron/asar');
 const BackupManager = require('./backup-manager');
-const { findKrunkerPath, describeInstall } = require('./krunker-finder');
+const { findKrunkerPath, describeInstall, explainMissing } = require('./krunker-finder');
 const { readFuses } = require('./inspect-client');
 
 const MARKER = '/* KRE-RECORDER */';
@@ -29,6 +29,7 @@ function resolveInstall(krunkerPath) {
     const info = krunkerPath ? describeInstall(krunkerPath) : findKrunkerPath();
     if (!info) {
         console.error('[KRE Installer] エラー: クライアントが見つかりませんでした。インストール先を引数で指定してください。');
+        if (krunkerPath) console.error(`指定ディレクトリの中身:\n${explainMissing(krunkerPath)}`);
         console.error('  例: node installer/src/sideloader.js install "C:\\Users\\<you>\\AppData\\Local\\glorp"');
         process.exit(1);
     }

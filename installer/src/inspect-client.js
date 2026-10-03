@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { findKrunkerPath, describeInstall } = require('./krunker-finder');
+const { findKrunkerPath, describeInstall, explainMissing } = require('./krunker-finder');
 
 // Electron Fuses (electron/fuses) のセンチネルと並び順
 const FUSE_SENTINEL = 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX';
@@ -114,8 +114,14 @@ function main() {
     const target = process.argv[2];
     const info = target ? describeInstall(target) : findKrunkerPath();
     if (!info) {
-        console.error('クライアントが見つかりません。インストール先ディレクトリを引数で指定してください。');
-        console.error('例: node installer/src/inspect-client.js "C:\\Users\\<you>\\AppData\\Local\\glorp"');
+        console.error('Electron クライアント (resources/app.asar と .exe) として認識できませんでした。');
+        if (target) {
+            console.error(`指定ディレクトリの中身:\n${explainMissing(target)}`);
+            console.error('\n上の一覧を共有してください。resources フォルダを含む階層を指定し直すと認識できる場合もあります。');
+        } else {
+            console.error('インストール先ディレクトリを引数で指定してください。');
+            console.error('例: node installer/src/inspect-client.js "C:\\Users\\<you>\\AppData\\Local\\glorp"');
+        }
         process.exit(1);
     }
     const report = inspect(info);

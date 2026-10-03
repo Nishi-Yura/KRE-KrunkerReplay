@@ -25,6 +25,31 @@ function validateKrunkerDir(dir) {
 function describeInstall(dir) {
     if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return null;
 
+    // 直下に resources/ があればそのまま。無ければ Squirrel 形式 (<dir>/app-<version>/) の最新版を調べる
+    const direct = describeExact(dir);
+    if (direct) return direct;
+
+    const versions = fs.readdirSync(dir)
+        .filter(f => /^app-\d/i.test(f) && fs.statSync(path.join(dir, f)).isDirectory())
+        .sort(compareVersionDirs);
+    for (let i = versions.length - 1; i >= 0; i--) {
+        const info = describeExact(path.join(dir, versions[i]));
+        if (info) return info;
+    }
+    return null;
+}
+
+function compareVersionDirs(a, b) {
+    const pa = a.replace(/^app-/i, '').split(/[.\-]/).map(n => parseInt(n, 10) || 0);
+    const pb = b.replace(/^app-/i, '').split(/[.\-]/).map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const d = (pa[i] || 0) - (pb[i] || 0);
+        if (d) return d;
+    }
+    return 0;
+}
+
+function describeExact(dir) {
     const resourcesPath = path.join(dir, 'resources');
     const asarPath = path.join(resourcesPath, 'app.asar');
     const appDir = path.join(resourcesPath, 'app');
@@ -34,10 +59,28 @@ function describeInstall(dir) {
     else if (fs.existsSync(path.join(appDir, 'package.json'))) kind = 'dir';
     if (!kind) return null;
 
-    const exe = fs.readdirSync(dir).find(f => /\.exe$/i.test(f) && !/^(uninstall|update)/i.test(f));
+    const exe = fs.readdirSync(dir).find(f => /\.exe$/i.test(f) && !/^(uninstall|update|squirrel)/i.test(f));
     if (!exe) return null;
 
     return { installDir: dir, resourcesPath, asarPath, appDir, kind, exePath: path.join(dir, exe) };
+}
+
+/** 見つからなかったときの手がかりとして、ディレクトリ構成を2階層まで文字列にする */
+function explainMissing(dir) {
+    const lines = [];
+    if (!dir || !fs.existsSync(dir)) return `  (ディレクトリが存在しません: ${dir})`;
+    const walk = (d, depth) => {
+        let entries = [];
+        try { entries = fs.readdirSync(d); } catch (e) { return; }
+        entries.slice(0, 40).forEach(f => {
+            const full = path.join(d, f);
+            const isDir = fs.statSync(full).isDirectory();
+            lines.push('  '.repeat(depth + 1) + f + (isDir ? '/' : ''));
+            if (isDir && depth < 1) walk(full, depth + 1);
+        });
+    };
+    walk(dir, 0);
+    return lines.join('\n');
 }
 
 /**
@@ -66,5 +109,6 @@ function findKrunkerPath() {
 module.exports = {
     findKrunkerPath,
     validateKrunkerDir,
-    describeInstall
+    describeInstall,
+    explainMissing
 };
