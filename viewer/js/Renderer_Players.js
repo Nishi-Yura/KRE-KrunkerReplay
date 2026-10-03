@@ -6,10 +6,13 @@ import { resetNametags } from './Renderer_UI.js';
 import { clearTracers } from './Renderer_Tracers.js';
 
 // ジオメトリ/マテリアルは全プレイヤーで共有し、チーム色だけ差し替える
-const BODY_GEO = new THREE.BoxGeometry(4, 10, 4);
+const TORSO_GEO = new THREE.BoxGeometry(4, 5.5, 2.5);
+const LEG_GEO = new THREE.BoxGeometry(1.8, 5, 2).translate(0, -2.5, 0);   // 股関節を原点に
+const ARM_GEO = new THREE.BoxGeometry(1.2, 5, 1.2).translate(0, -2.5, 0); // 肩を原点に
 const HEAD_GEO = new THREE.BoxGeometry(3, 3, 3);
 const SIGHT_GEO = new THREE.BoxGeometry(0.5, 0.5, 15);
 const HEAD_MAT = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const LEG_MAT = new THREE.MeshLambertMaterial({ color: 0x333344 });
 const SIGHT_MAT = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 const TEAM_COLORS = { 0: 0x0000ff, 1: 0xff8800, 2: 0x00ccff };
 const BODY_MATS = {};
@@ -20,12 +23,26 @@ function bodyMaterial(team) {
     return BODY_MATS[key];
 }
 
+// 全長は従来と同じ約13 (足元 y=0 〜 頭頂 y=13)。胴 → 腕 → 脚 → 頭 → 照準線の人型
 export function createPlayerMesh(team = 0) {
     const group = new THREE.Group();
+    const mat = bodyMaterial(team);
 
-    const body = new THREE.Mesh(BODY_GEO, bodyMaterial(team));
-    body.position.y = 5;
-    group.add(body);
+    const torso = new THREE.Mesh(TORSO_GEO, mat);
+    torso.position.y = 7.75;
+    group.add(torso);
+
+    const armL = new THREE.Mesh(ARM_GEO, mat);
+    armL.position.set(-2.6, 10, 0);
+    const armR = new THREE.Mesh(ARM_GEO, mat);
+    armR.position.set(2.6, 10, 0);
+    group.add(armL, armR);
+
+    const legL = new THREE.Mesh(LEG_GEO, LEG_MAT);
+    legL.position.set(-1, 5, 0);
+    const legR = new THREE.Mesh(LEG_GEO, LEG_MAT);
+    legR.position.set(1, 5, 0);
+    group.add(legL, legR);
 
     const head = new THREE.Mesh(HEAD_GEO, HEAD_MAT);
     head.position.y = 11.5;
@@ -36,13 +53,18 @@ export function createPlayerMesh(team = 0) {
     group.add(sightMesh);
 
     group.userData.team = team;
+    group.userData.teamParts = [torso, armL, armR];
+    group.userData.legs = [legL, legR];
+    group.userData.arms = [armL, armR];
+    group.userData.walkCycle = 0;
     return group;
 }
 
 export function setMeshTeam(mesh, team) {
     if (mesh.userData.team === team) return;
     mesh.userData.team = team;
-    mesh.children[0].material = bodyMaterial(team);
+    const mat = bodyMaterial(team);
+    mesh.userData.teamParts.forEach(part => { part.material = mat; });
 }
 
 export function setupRealPlayers() {

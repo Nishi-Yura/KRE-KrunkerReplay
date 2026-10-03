@@ -249,13 +249,10 @@ export function parseJSONLog(input) {
         // ===== crsp-packet: Respawn with position =====
         else if (op === 'crsp') {
             // crsp: ['crsp', ?, respawnId, posX, posY, posZ, team, ?]
-            // This is for the local player (self) respawning
-            // Reset HP to 100 for players that just died
-            Object.values(playersMap).forEach(p => {
-                if (p.health <= 0) {
-                    p.health = 100;
-                }
-            });
+            // 自分自身のリスポーンなので、復活扱いにするのはローカルプレイヤー(id 0)だけ。
+            // 他プレイヤーのHPは k-packet が随時更新するため、ここで一括復活させない
+            const local = playersMap[0];
+            if (local && local.health <= 0) local.health = local.maxHealth || 100;
         }
         // ===== l-packet: Projectile data =====
         else if (op === 'l' && payload[1] && Array.isArray(payload[1])) {

@@ -112,6 +112,18 @@ export function animate() {
                 }
             }
 
+            // 歩行アニメーション: 移動距離に応じて手足を振る (一時停止・シーク直後は止める)
+            const moved = mesh.visible && mesh.userData.hasPrev ? mesh.position.distanceTo(_targetPos) : 0;
+            const walking = State.isPlaying && !jumped && moved > 0.05 && moved < 30;
+            const swing = walking ? Math.min(1, moved / Math.max(delta * State.speed, 1e-3) / 60) : 0;
+            if (walking) mesh.userData.walkCycle += moved * 0.35;
+            const phase = Math.sin(mesh.userData.walkCycle) * 0.9 * (walking ? swing : 0);
+            mesh.userData.legs[0].rotation.x = phase;
+            mesh.userData.legs[1].rotation.x = -phase;
+            mesh.userData.arms[0].rotation.x = -phase * 0.7;
+            mesh.userData.arms[1].rotation.x = phase * 0.7;
+            mesh.userData.hasPrev = true;
+
             mesh.position.copy(_targetPos);
             mesh.quaternion.setFromAxisAngle(_yAxis, targetYaw);
             mesh.userData.pitch = targetPitch;
