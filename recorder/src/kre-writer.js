@@ -1,6 +1,6 @@
 const fs = require('fs');
 const zlib = require('zlib');
-const { MAGIC_BYTES, VERSION, HEADER_SIZE, HeaderOffsets } = require('@krunker-replay/shared/src/kre-format');
+const { MAGIC_BYTES, HEADER_SIZE, HeaderOffsets, FRAME_PLAYER_SIZE } = require('@krunker-replay/shared/src/kre-format');
 
 /**
  * .kreファイルのバイナリ書き出し
@@ -35,7 +35,12 @@ class KreWriter {
     if (!this.fd) return;
     const serialized = this._serializeFrames(frames);
     const compressed = zlib.deflateSync(serialized); // zlib圧縮
-    
+
+    // チャンク境界を判別できるよう [長さ uint32][圧縮データ] の形で書く
+    const lengthBuffer = Buffer.alloc(4);
+    lengthBuffer.writeUInt32LE(compressed.length, 0);
+    fs.writeSync(this.fd, lengthBuffer, 0, 4, this.currentOffset);
+    this.currentOffset += 4;
     fs.writeSync(this.fd, compressed, 0, compressed.length, this.currentOffset);
     this.currentOffset += compressed.length;
   }
@@ -51,16 +56,13 @@ class KreWriter {
   finalize(totalFrames, durationMs) {
     if (!this.fd) return;
     
-    // ヘッダーを最終値で更新
-    const headerBuffer = Buffer.alloc(14); // DURATION_MS, FRAME_COUNT, SAMPLE_RATE, RESERVED(一部)
-    headerBuffer.writeUInt32LE(durationMs, 0); // DURATION_MS (offset 54 -> wait, we shifted offsets! It's now offset 54 in HeaderOffsets, so in headerBuffer... wait.
-    // Wait! HeaderOffsets.DURATION_MS is now 54. 
-    // Wait, earlier the code was writing to file at offset HeaderOffsets.DURATION_MS using fs.writeSync.
-    headerBuffer.writeUInt32LE(durationMs, 0); // DURATION_MS (relative offset 0)
-    headerBuffer.writeUInt32LE(totalFrames, 4); // FRAME_COUNT (relative offset 4)
-    headerBuffer.writeUInt8(50, 8); // SAMPLE_RATE (relative offset 8)
-    
-    fs.writeSync(this.fd, headerBuffer, 0, 14, HeaderOffsets.DURATION_MS);
+    // ヘッダーを最終値で更新 (DURATION_MS / FRAME_COUNT / SAMPLE_RATE は連続した 9 バイト)
+    // ヘッダー(64バイト)を越えて最初のチャンクを壊さないよう、書く長さは必ず 9 バイトにする
+    const headerBuffer = Buffer.alloc(9);
+    headerBuffer.writeUInt32LE(durationMs, 0);  // DURATION_MS
+    headerBuffer.writeUInt32LE(totalFrames, 4); // FRAME_COUNT
+    headerBuffer.writeUInt8(50, 8);             // SAMPLE_RATE
+    fs.writeSync(this.fd, headerBuffer, 0, 9, HeaderOffsets.DURATION_MS);
 
     // イベントインデックスとCRC32書き出しなどは簡易実装
     // ここで最後に、プレイヤー名簿(Roster)をJSONとして追記する
@@ -69,59 +71,65 @@ class KreWriter {
     const lengthBuffer = Buffer.alloc(4);
     lengthBuffer.writeUInt32LE(rosterBuffer.length, 0);
     
-    // Roster長(4バイト) + RosterJSON をファイル末尾に書き込む
-    fs.writeSync(this.fd, lengthBuffer, 0, 4, this.currentOffset);
-    this.currentOffset += 4;
+    // 末尾レイアウト: [RosterJSON][Roster長 uint32][MAGIC "ROST"]
+    // ビューアは末尾の "ROST" から逆向きに長さ→JSONの順で読む
     fs.writeSync(this.fd, rosterBuffer, 0, rosterBuffer.length, this.currentOffset);
     this.currentOffset += rosterBuffer.length;
-    
-    // [MAGIC: "ROST"] マーカーを最後に書き込み、パース時に末尾から読めるようにする
-    const markerBuffer = Buffer.from("ROST", 'utf8');
-    fs.writeSync(this.fd, markerBuffer, 0, 4, this.currentOffset);
+    fs.writeSync(this.fd, lengthBuffer, 0, 4, this.currentOffset);
+    this.currentOffset += 4;
+    fs.writeSync(this.fd, Buffer.from('ROST', 'utf8'), 0, 4, this.currentOffset);
 
     fs.closeSync(this.fd);
     this.fd = null;
   }
 
   _serializeFrames(frames) {
-    // Parser expects:
-    // timestamp(4) + pCount(1) + (pCount * 17)
-    // Here, frames is an array of frame objects: { timestamp, players: [...] }
-    
-    // Calculate total buffer size
+    // Parser expects (little endian):
+    // timestamp(4) + pCount(1) + pCount * PLAYER_BYTES
+    // player: id(1) px(4) py(4) pz(4) ry(2) rx(2) hp(1) ammo(1) flags(1) eventType(1) eventVictim(1)
+    // 座標は int32 (1/100単位)。Krunkerのマップは int16 (±327) に収まらないため。
+    const PLAYER_BYTES = FRAME_PLAYER_SIZE;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const toFixed = (v, scale, lo, hi) => clamp(Math.round((Number(v) || 0) * scale), lo, hi);
+    const toAngle = (rad) => {
+      let a = Number(rad) || 0;
+      a = Math.atan2(Math.sin(a), Math.cos(a)); // [-π, π] に正規化 (×1000 が int16 に収まる)
+      return Math.round(a * 1000);
+    };
+
     let totalSize = 0;
     for (const frame of frames) {
-      totalSize += 5 + (frame.players.length * 17);
+      totalSize += 5 + (frame.players.length * PLAYER_BYTES);
     }
-    
+
     const buffer = Buffer.alloc(totalSize);
     let offset = 0;
-    
+
     for (const frame of frames) {
-      buffer.writeUInt32LE(frame.timestamp || 0, offset); // timestamp (4)
-      buffer.writeUInt8(frame.players.length, offset + 4); // pCount (1)
+      const players = frame.players.slice(0, 255);
+      buffer.writeUInt32LE(frame.timestamp || 0, offset);
+      buffer.writeUInt8(players.length, offset + 4);
       offset += 5;
-      
-      for (const p of frame.players) {
-        buffer.writeUInt8(p.playerId || 0, offset); // id (1)
-        buffer.writeInt16LE(Math.floor((p.pos[0] || 0) * 100), offset + 1); // px (2)
-        buffer.writeInt16LE(Math.floor((p.pos[1] || 0) * 100), offset + 3); // py (2)
-        buffer.writeInt16LE(Math.floor((p.pos[2] || 0) * 100), offset + 5); // pz (2)
-        buffer.writeInt16LE(Math.floor((p.rot[0] || 0) * 1000), offset + 7); // ry (2)
-        buffer.writeInt16LE(Math.floor((p.rot[1] || 0) * 1000), offset + 9); // rx (2)
-        buffer.writeUInt8(p.health || 0, offset + 11); // hp (1)
-        buffer.writeUInt8(p.ammo || 0, offset + 12); // ammo (1)
-        
+
+      for (const p of players) {
+        buffer.writeUInt8(clamp(p.playerId || 0, 0, 255), offset);
+        buffer.writeInt32LE(toFixed(p.pos[0], 100, -2147483648, 2147483647), offset + 1);
+        buffer.writeInt32LE(toFixed(p.pos[1], 100, -2147483648, 2147483647), offset + 5);
+        buffer.writeInt32LE(toFixed(p.pos[2], 100, -2147483648, 2147483647), offset + 9);
+        buffer.writeInt16LE(toAngle(p.rot[0]), offset + 13);
+        buffer.writeInt16LE(toAngle(p.rot[1]), offset + 15);
+        buffer.writeUInt8(clamp(Math.round(p.health || 0), 0, 255), offset + 17);
+        buffer.writeUInt8(clamp(Math.round(p.ammo || 0), 0, 255), offset + 18);
+
         let flags = 0;
         if (p.shooting) flags |= 1;
         if (p.scoping) flags |= 2;
-        flags |= (p.team & 0xF) << 4;
-        
-        buffer.writeUInt8(flags, offset + 13); // flags (1)
-        buffer.writeUInt8(p.eventType || 0, offset + 14); // eventType (1)
-        buffer.writeUInt8(p.eventVictim || 0, offset + 15); // eventVictim (1)
-        buffer.writeUInt8(0, offset + 16); // padding (1 byte to make it 17)
-        offset += 17;
+        flags |= ((p.team || 0) & 0xF) << 4;
+
+        buffer.writeUInt8(flags, offset + 19);
+        buffer.writeUInt8(p.eventType || 0, offset + 20);
+        buffer.writeUInt8(p.eventVictim || 0, offset + 21);
+        offset += PLAYER_BYTES;
       }
     }
     return buffer;

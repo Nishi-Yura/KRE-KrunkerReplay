@@ -122,7 +122,7 @@
     // =====================
     function buf2base64(buffer) {
         let binary = '';
-        const bytes = new Uint8Array(buffer);
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
         const len = bytes.byteLength;
         const chunkSize = 8192;
         
@@ -185,7 +185,7 @@
                     if (data instanceof ArrayBuffer) {
                         frames.push([Date.now(), buf2base64(data), true]); // true = sent by client
                     } else if (data instanceof Uint8Array) {
-                        frames.push([Date.now(), buf2base64(data.buffer), true]);
+                        frames.push([Date.now(), buf2base64(data), true]);
                     }
                 }
             } catch(e) {}

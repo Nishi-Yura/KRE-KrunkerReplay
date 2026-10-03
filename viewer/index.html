@@ -12,6 +12,7 @@
 
   <div id="ui-layer">
     <div id="top-bar" class="panel glass">
+      <button data-open-file title="リプレイ/マップを開く">📂 開く</button>
       <button id="btn-help" style="background: rgba(0,212,255,0.2); border-color: #00d4ff;">? ヘルプ</button>
       <button id="cam-free">自由視点(F)</button>
       <button id="cam-1st">1人称(1)</button>
@@ -50,12 +51,10 @@
     
     <div id="play-pause-indicator"></div>
     
-    <div id="scoreboard" class="panel glass">
-      <h2>Scoreboard</h2>
-      <p>※ Tabキーで表示・非表示</p>
-    </div>
+    <div id="scoreboard"></div>
   </div>
 
+  <input type="file" id="file-input" accept=".json,.kre,.kre_log,.obj" hidden>
   <div id="drop-overlay">ファイルをドロップ...</div>
   <div id="toast-container"></div>
   
@@ -67,7 +66,8 @@
       
       <div id="landing-box">
         <div style="font-size:32px; margin-bottom:10px;">📥</div>
-        <div><b>.json</b> 形式のリプレイファイルを<br>ここにドラッグ＆ドロップしてください</div>
+        <div><b>.json</b> / <b>.kre</b> のリプレイファイルを<br>ここにドラッグ＆ドロップしてください</div>
+        <button data-open-file style="margin-top:14px;">ファイルを選択</button>
       </div>
     </div>
   </div>
@@ -81,10 +81,12 @@
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> : カメラの移動（自由視点時）</div>
         <div><kbd>E</kbd> / <kbd>Q</kbd> : カメラの上昇 / 下降</div>
         <div><b>左ドラッグ</b> : 視点の回転（見回す）</div>
-        <div><b>ホイール</b> : カメラのズーム</div>
+        <div><kbd>Shift</kbd> : 移動を3倍速に（自由視点時）</div>
+        <div><b>ホイール</b> : ズーム（自由視点: 前後移動 / 3人称: 距離）</div>
+        <div><kbd>F</kbd> / <kbd>1</kbd> / <kbd>3</kbd> : 自由 / 1人称 / 3人称視点</div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
         <div><kbd>Space</kbd> : 再生 / 一時停止</div>
-        <div><kbd>←</kbd> / <kbd>→</kbd> : 1秒戻る / 進む</div>
+        <div><kbd>←</kbd> / <kbd>→</kbd> : 5秒戻る / 進む</div>
         <div><kbd>Tab</kbd> : スコアボード表示</div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
         <div style="color:#aaa; font-size:12px;">※ マップ(地形)データがない場合、灰色のブロックは表示されずプレイヤーのみが空中に表示されます。</div>
@@ -94,9 +96,6 @@
 
   <!-- Three.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <!-- MsgPack CDN -->
-  <script src="https://unpkg.com/@msgpack/msgpack"></script>
-  
-  <script src="dist/bundle.js?v=11"></script>
+  <script src="dist/bundle.js?v=12"></script>
 </body>
 </html>

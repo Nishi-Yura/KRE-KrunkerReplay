@@ -1,111 +1,137 @@
 import { State, Shared } from './State.js';
 import { KRUNKER_CLASSES } from './Constants.js';
+import { escapeHTML, upperBoundIndex } from './Utils.js';
 
-function escapeHTML(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const TEAM_HEX = { 1: '#ff8800', 2: '#00ccff' };
+
+// events 配列 (時刻順) から kill / scoreboard だけを抜き出して保持する。
+// events が差し替わったとき (新しいリプレイ読み込み時) のみ再構築する。
+let _indexedEvents = null;
+let _kills = [];
+let _scoreboards = [];
+function indexEvents() {
+    if (_indexedEvents === Shared.events) return;
+    _indexedEvents = Shared.events;
+    _kills = [];
+    _scoreboards = [];
+    (Shared.events || []).forEach(e => {
+        if (e.type === 'kill') _kills.push(e);
+        else if (e.type === 'scoreboard') _scoreboards.push(e);
+    });
+    _statsCache = null;
+    _playerLookup = null;
 }
 
-// Shared helper: computes each player's kills/deaths/score/obj as of a given time,
-// using the latest 'scoreboard' event before that time (falling back to counting
-// kill events if the replay has no scoreboard packets yet). Used by both the
-// scoreboard overlay and the per-player spectate HUD so the numbers always agree.
+function recentKills(timeMs, windowMs) {
+    indexEvents();
+    const end = upperBoundIndex(_kills, timeMs);
+    const out = [];
+    for (let i = end; i >= 0 && timeMs - _kills[i].timestamp < windowMs; i--) out.push(_kills[i]);
+    return out.reverse();
+}
+
+let _playerLookup = null;
+let _playerLookupSrc = null;
+function playerById(id) {
+    if (_playerLookupSrc !== Shared.playerInfo || !_playerLookup) {
+        _playerLookupSrc = Shared.playerInfo;
+        _playerLookup = new Map();
+        if (Array.isArray(Shared.playerInfo)) {
+            Shared.playerInfo.forEach(p => _playerLookup.set(String(p.id), p));
+        } else if (Shared.playerInfo && typeof Shared.playerInfo === 'object') {
+            Object.entries(Shared.playerInfo).forEach(([k, info]) => {
+                _playerLookup.set(k, { id: k, pName: info.name || `Player ${k}`, team: info.team || 0 });
+            });
+        }
+    }
+    return _playerLookup.get(String(id));
+}
+
+// 指定時刻の kills/deaths/score/obj を返す。最新の scoreboard イベントを優先し、
+// 無ければ kill イベントの集計を使う。結果は 100ms 単位でキャッシュする。
+let _statsCache = null;
 export function computeDynamicStats(timeMs) {
+    indexEvents();
+    const bucket = Math.floor(timeMs / 100);
+    if (_statsCache && _statsCache.bucket === bucket && _statsCache.src === Shared.playerInfo) {
+        return _statsCache.value;
+    }
+
     const dynamicStats = {};
     if (Array.isArray(Shared.playerInfo)) {
         Shared.playerInfo.forEach(p => {
             dynamicStats[String(p.id)] = { ...p, kills: 0, deaths: 0, score: 0, obj: 0 };
         });
     } else if (Shared.playerInfo && typeof Shared.playerInfo === 'object') {
-        // Legacy map { id: { name, team } }
         Object.entries(Shared.playerInfo).forEach(([id, info]) => {
             dynamicStats[id] = { id, pName: info.name || `Player ${id}`, team: info.team || 0, kills: 0, deaths: 0, score: 0, obj: 0 };
         });
     }
 
+    // kill イベントから集計 (POINTモードでは deaths が scoreboard に無いため)
+    const killEnd = upperBoundIndex(_kills, timeMs);
+    for (let i = 0; i <= killEnd; i++) {
+        const e = _kills[i];
+        const k = dynamicStats[String(e.killer)];
+        const v = dynamicStats[String(e.victim)];
+        if (k) { k.kills++; k.score += e.headshot ? 100 : 50; }
+        if (v) v.deaths++;
+    }
+
+    // 公式 scoreboard があれば上書き (開始前なら最初のものを使う)
     let isObjMode = false;
-    if (Shared.events) {
-        let latestScoreboard = null;
-        let firstScoreboard = null;
-        for (let i = 0; i < Shared.events.length; i++) {
-            const e = Shared.events[i];
-            if (e.type === 'scoreboard') {
-                if (!firstScoreboard) firstScoreboard = e;
-                if (e.timestamp <= timeMs) {
-                    latestScoreboard = e; 
-                    isObjMode = e.isObjMode;
-                } else {
-                    break;
-                }
+    let latest = null;
+    if (_scoreboards.length > 0) {
+        const idx = upperBoundIndex(_scoreboards, timeMs);
+        latest = _scoreboards[Math.max(0, idx)];
+        isObjMode = latest.isObjMode;
+    }
+    if (latest) {
+        for (const sid in latest.scores) {
+            const key = String(sid);
+            if (!dynamicStats[key]) {
+                dynamicStats[key] = { id: Number(sid), pName: `Player ${sid}`, team: 0, kills: 0, deaths: 0, score: 0, obj: 0 };
             }
-        }
-        
-        if (!latestScoreboard && firstScoreboard) {
-            latestScoreboard = firstScoreboard;
-            isObjMode = firstScoreboard.isObjMode;
-        }
-
-        // Always count kills/deaths from kill events first (since POINT mode doesn't provide deaths)
-        Shared.events.forEach(e => {
-            if (e.timestamp <= timeMs && e.type === 'kill') {
-                const kKey = String(e.killer);
-                const vKey = String(e.victim);
-                if (dynamicStats[kKey]) {
-                    dynamicStats[kKey].kills++;
-                    dynamicStats[kKey].score += e.headshot ? 100 : 50;
-                }
-                if (dynamicStats[vKey]) {
-                    dynamicStats[vKey].deaths++;
-                }
-            }
-        });
-
-        // Override with official scoreboard values if available
-        if (latestScoreboard) {
-            for (const sid in latestScoreboard.scores) {
-                const key = String(sid);
-                if (!dynamicStats[key]) {
-                    dynamicStats[key] = { id: Number(sid), pName: `Player ${sid}`, team: 0, kills: 0, deaths: 0, score: 0, obj: 0 };
-                }
-                const pScore = latestScoreboard.scores[sid];
-                if (pScore.score !== undefined) dynamicStats[key].score = pScore.score;
-                if (pScore.kills !== undefined) dynamicStats[key].kills = pScore.kills;
-                if (pScore.deaths !== undefined) dynamicStats[key].deaths = pScore.deaths;
-                if (pScore.obj !== undefined) dynamicStats[key].obj = pScore.obj;
-            }
+            const pScore = latest.scores[sid];
+            if (pScore.score !== undefined) dynamicStats[key].score = pScore.score;
+            if (pScore.kills !== undefined) dynamicStats[key].kills = pScore.kills;
+            if (pScore.deaths !== undefined) dynamicStats[key].deaths = pScore.deaths;
+            if (pScore.obj !== undefined) dynamicStats[key].obj = pScore.obj;
         }
     }
 
-    return { dynamicStats, isObjMode };
+    const value = { dynamicStats, isObjMode };
+    _statsCache = { bucket, src: Shared.playerInfo, value };
+    return value;
 }
 
+let _lastHudHtml = '';
+let _lastCardClass = new Map();
 export function updateDynamicHUD(currentFrame) {
     if (!currentFrame || !State.targetPlayerId) return;
     const p = currentFrame.players.find(x => x.id == State.targetPlayerId);
     if (!p) return;
-    
-    // Update center HUD
-    let classHud = document.getElementById('class-hud');
+
+    const className = p.classId === undefined || p.classId === null ? '' : (KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`);
+    const classHud = document.getElementById('class-hud');
     if (classHud && classHud.style.display !== 'none') {
-        const className = KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`;
         const pName = p.name || `Player ${p.id}`;
-        
         const hp = p.health || 0;
         const maxHp = p.maxHealth || 100;
         const hpPercent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
         let hpColor = '#00ff88';
         if (hpPercent < 30) hpColor = '#ff3333';
         else if (hpPercent < 60) hpColor = '#ffcc00';
-        
+
         const { dynamicStats } = computeDynamicStats(State.time * 1000);
         const stats = dynamicStats[String(p.id)] || { kills: 0, deaths: 0, score: 0 };
         const kd = stats.deaths === 0 ? stats.kills : (stats.kills / stats.deaths).toFixed(2);
-        
-        classHud.innerHTML = `
+
+        const html = `
             <div>Spectating: <span style="color:#00ff88">${escapeHTML(pName)}</span></div>
             <div style="font-size:12px; opacity:0.8; margin-bottom:6px;">${escapeHTML(className)}</div>
             <div style="width:100%; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden; margin-bottom:6px;">
-                <div style="height:100%; width:${hpPercent}%; background:${hpColor}; transition:width 0.1s linear;"></div>
+                <div style="height:100%; width:${hpPercent}%; background:${hpColor};"></div>
             </div>
             <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}</div>
             <div style="display:flex; justify-content:center; gap:12px; font-size:12px; font-family:monospace;">
@@ -115,302 +141,251 @@ export function updateDynamicHUD(currentFrame) {
                 <span>K/D: <b>${kd}</b></span>
             </div>
         `;
-    }
-    
-    // Also update the player list if they changed class
-    const pCard = document.querySelector(`.player-card[data-id="${p.id}"]`);
-    if (pCard) {
-        const classDiv = pCard.querySelector('.class-text');
-        if (classDiv) {
-            const className = KRUNKER_CLASSES[p.classId] || `Class ${p.classId}`;
-            classDiv.innerText = className;
+        if (html !== _lastHudHtml) {
+            classHud.innerHTML = html;
+            _lastHudHtml = html;
         }
+    }
+
+    // プレイヤーリストのクラス表示 (変化したときだけ更新)
+    if (className && _lastCardClass.get(p.id) !== className) {
+        _lastCardClass.set(p.id, className);
+        const pCard = document.querySelector(`.player-card[data-id="${p.id}"] .class-text`);
+        if (pCard) pCard.innerText = className;
     }
 }
 
-export function drawMinimap() {
-  const minimapCanvas = document.getElementById('minimap');
-  if(!minimapCanvas) return;
-  const ctx = minimapCanvas.getContext('2d');
-  minimapCanvas.width = 200;
-  minimapCanvas.height = 200;
-  
-  ctx.clearRect(0, 0, 200, 200);
-  ctx.fillStyle = 'rgba(255,255,255,0.1)';
-  ctx.fillRect(10, 10, 180, 180);
-  
-  if (State.mode !== 'real') return;
-  
-  const pList = Object.entries(Shared.realMeshes);
-  
-  // Calculate dynamic bounds from all visible meshes
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  pList.forEach(([id, mesh]) => {
-    if(!mesh || mesh.visible === false) return;
-    minX = Math.min(minX, mesh.position.x);
-    maxX = Math.max(maxX, mesh.position.x);
-    minZ = Math.min(minZ, mesh.position.z);
-    maxZ = Math.max(maxZ, mesh.position.z);
-  });
-  const rangeX = Math.max(maxX - minX, 50);
-  const rangeZ = Math.max(maxZ - minZ, 50);
-  const scale = Math.min(160 / rangeX, 160 / rangeZ);
-  const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
+const MINIMAP_SIZE = 200;
+let _minimapCtx = null;
 
-  pList.forEach(([id, mesh]) => {
-    if(!mesh || mesh.visible === false) return;
-    const x = 100 + (mesh.position.x - cx) * scale;
-    const y = 100 + (mesh.position.z - cz) * scale;
-    
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
-    ctx.fill();
-  });
+export function drawMinimap() {
+    const canvas = document.getElementById('minimap');
+    if (!canvas) return;
+    if (!_minimapCtx || canvas.width !== MINIMAP_SIZE) {
+        canvas.width = MINIMAP_SIZE;   // サイズ設定はキャンバスをリセットするので一度だけ行う
+        canvas.height = MINIMAP_SIZE;
+        _minimapCtx = canvas.getContext('2d');
+    }
+    const ctx = _minimapCtx;
+    ctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(10, 10, 180, 180);
+
+    if (State.mode !== 'real' || !Shared.playBounds) return;
+
+    // リプレイ全体の移動範囲で固定スケールにする (プレイヤーの増減で拡縮しない)
+    const b = Shared.playBounds;
+    const rangeX = Math.max(b.maxX - b.minX, 50);
+    const rangeZ = Math.max(b.maxZ - b.minZ, 50);
+    const scale = Math.min(160 / rangeX, 160 / rangeZ);
+    const cx = (b.minX + b.maxX) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
+
+    for (const id in Shared.realMeshes) {
+        const mesh = Shared.realMeshes[id];
+        if (!mesh || mesh.visible === false) continue;
+        const x = 100 + (mesh.position.x - cx) * scale;
+        const y = 100 + (mesh.position.z - cz) * scale;
+        const isTarget = Number(id) === State.targetPlayerId;
+        const team = mesh.userData.team;
+
+        ctx.fillStyle = team === 1 ? '#ff8800' : team === 2 ? '#00ccff' : '#4d6bff';
+        ctx.beginPath();
+        ctx.arc(x, y, isTarget ? 5 : 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        if (isTarget) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // 向き (メッシュ前方は -Z を yaw 回転した方向)
+        const yaw = mesh.rotation.y;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - Math.sin(yaw) * 9, y - Math.cos(yaw) * 9);
+        ctx.stroke();
+    }
+}
+
+const _tags = new Map(); // id -> { div, name, fill, text, team, hp }
+const _tagPos = new THREE.Vector3();
+
+export function resetNametags() {
+    _tags.clear();
+    const layer = document.getElementById('nametags-layer');
+    if (layer) layer.innerHTML = '';
+    _lastCardClass = new Map();
+    _lastHudHtml = '';
+}
+
+function createTag(id, layer) {
+    const div = document.createElement('div');
+    div.className = 'nametag';
+    div.style.cssText = 'background: transparent; color: white; padding: 0; border-radius: 0;';
+    div.innerHTML = `<div class="nametag-name"></div><div class="nametag-hp-bar"><div class="nametag-hp-fill"></div></div>`;
+    layer.appendChild(div);
+    const tag = {
+        div,
+        name: div.querySelector('.nametag-name'),
+        fill: div.querySelector('.nametag-hp-fill'),
+        text: null, team: null, hp: null, shown: true, transform: ''
+    };
+    _tags.set(id, tag);
+    return tag;
+}
+
+function hideTag(tag) {
+    if (tag && tag.shown) { tag.div.style.display = 'none'; tag.shown = false; }
 }
 
 export function updateNametags(currentFrame) {
-    const nametagsLayer = document.getElementById('nametags-layer');
-    if (!nametagsLayer) return;
+    const layer = document.getElementById('nametags-layer');
+    if (!layer) return;
 
-    if (State.mode === 'real' && currentFrame) {
-        Object.entries(Shared.realMeshes).forEach(([id, mesh]) => {
-            let tagDiv = document.getElementById('nametag-' + id);
-            
-            const pData = currentFrame.players.find(p => p.id == id);
-            if (!pData || pData.health <= 0 || !mesh.visible || (State.cameraMode === '1st' && parseInt(id) === State.targetPlayerId)) {
-                if (tagDiv) tagDiv.style.display = 'none';
-                return;
-            }
-            
-            if (!tagDiv) {
-                tagDiv = document.createElement('div');
-                tagDiv.id = 'nametag-' + id;
-                tagDiv.className = 'nametag';
-                
-                const pName = pData.name || `Player ${id}`;
-                const hp = pData.health || 100;
-                const maxHp = pData.maxHealth || 100;
-                const hpPercent = (hp / maxHp) * 100;
-                
-                tagDiv.innerHTML = `
-                    <div class="nametag-name" id="nametag-name-${id}">${escapeHTML(pName)}</div>
-                    <div class="nametag-hp-bar">
-                        <div class="nametag-hp-fill" id="nametag-hp-${id}" style="width: ${hpPercent}%"></div>
-                    </div>
-                `;
-                nametagsLayer.appendChild(tagDiv);
-            }
-            
-            tagDiv.style.display = 'block';
-            tagDiv.style.backgroundColor = 'transparent';
-            tagDiv.style.color = 'white';
-            tagDiv.style.padding = '0';
-            tagDiv.style.borderRadius = '0';
-            
-            let nameTagBg = 'rgba(0,0,0,0.6)';
-            if (pData.team === 1) nameTagBg = 'rgba(255, 136, 0, 0.85)';
-            else if (pData.team === 2) nameTagBg = 'rgba(0, 204, 255, 0.85)';
-            
-            const nameDiv = document.getElementById('nametag-name-' + id);
-            if (nameDiv) {
-                nameDiv.innerText = pData.name || `Player ${id}`;
-                nameDiv.style.color = 'white';
-                nameDiv.style.background = nameTagBg;
-            }
-            
-            const hpFill = document.getElementById('nametag-hp-' + id);
-            if (hpFill) {
-                const hp = pData.health || 100;
-                const maxHp = pData.maxHealth || 100;
-                const hpPercent = (hp / maxHp) * 100;
-                hpFill.style.width = Math.max(0, Math.min(100, hpPercent)) + '%';
-                if (hpPercent < 30) hpFill.style.background = '#ff0000';
-                else if (hpPercent < 60) hpFill.style.background = '#ffff00';
-                else hpFill.style.background = '#00ff00';
-            }
-            
-            const pos = mesh.position.clone();
-            pos.y += 12; 
-            pos.project(Shared.camera);
-            
-            if (pos.z > 1) {
-                tagDiv.style.display = 'none';
-                return;
-            }
-            
-            const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
-            const y = (-(pos.y * 0.5) + 0.5) * window.innerHeight;
-            tagDiv.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`;
-        });
-    } else {
-        nametagsLayer.innerHTML = '';
+    if (State.mode !== 'real' || !currentFrame) {
+        if (_tags.size) resetNametags();
+        return;
+    }
+
+    for (const id in Shared.realMeshes) {
+        const mesh = Shared.realMeshes[id];
+        let tag = _tags.get(id);
+        const pData = currentFrame.players.find(p => p.id == id);
+        if (!pData || pData.health <= 0 || !mesh.visible || (State.cameraMode === '1st' && Number(id) === State.targetPlayerId)) {
+            hideTag(tag);
+            continue;
+        }
+        if (!tag) tag = createTag(id, layer);
+
+        _tagPos.copy(mesh.position);
+        _tagPos.y += 12;
+        _tagPos.project(Shared.camera);
+        if (_tagPos.z > 1) { hideTag(tag); continue; }
+
+        if (!tag.shown) { tag.div.style.display = 'block'; tag.shown = true; }
+
+        const text = pData.name || `Player ${id}`;
+        if (text !== tag.text) { tag.name.innerText = text; tag.text = text; }
+        if (pData.team !== tag.team) {
+            tag.name.style.background = pData.team === 1 ? 'rgba(255, 136, 0, 0.85)'
+                : pData.team === 2 ? 'rgba(0, 204, 255, 0.85)' : 'rgba(0,0,0,0.6)';
+            tag.team = pData.team;
+        }
+        const maxHp = pData.maxHealth || 100;
+        const hpPercent = Math.max(0, Math.min(100, ((pData.health || 0) / maxHp) * 100));
+        const hpKey = Math.round(hpPercent);
+        if (hpKey !== tag.hp) {
+            tag.fill.style.width = hpKey + '%';
+            tag.fill.style.background = hpPercent < 30 ? '#ff0000' : hpPercent < 60 ? '#ffff00' : '#00ff00';
+            tag.hp = hpKey;
+        }
+
+        const x = Math.round((_tagPos.x * 0.5 + 0.5) * window.innerWidth);
+        const y = Math.round((-(_tagPos.y * 0.5) + 0.5) * window.innerHeight);
+        const transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`;
+        if (transform !== tag.transform) { tag.div.style.transform = transform; tag.transform = transform; }
     }
 }
 
-export function updateKillLog(currentFrame) {
+let _lastKillLogKey = null;
+export function updateKillLog() {
     const killLogContainer = document.getElementById('kill-log');
     if (!killLogContainer || !Shared.events || State.mode !== 'real') return;
-    
-    const timeMs = State.time * 1000;
-    const recentKills = Shared.events.filter(e => e.type === 'kill' && timeMs >= e.timestamp && timeMs - e.timestamp < 5000);
-    
+
+    const recent = recentKills(State.time * 1000, 5000);
+    const key = recent.map(k => `${k.timestamp}:${k.killer}:${k.victim}`).join('|') + `#${Shared.playerInfo ? Shared.playerInfo.length : 0}`;
+    if (key === _lastKillLogKey) return;
+    _lastKillLogKey = key;
+
     killLogContainer.innerHTML = '';
-    recentKills.forEach(k => {
+    recent.forEach(k => {
+        const kP = playerById(k.killer);
+        const vP = playerById(k.victim);
+        const killerName = (kP && kP.pName) || 'Unknown';
+        const victimName = (vP && vP.pName) || 'Unknown';
+        const killerColor = TEAM_HEX[kP && kP.team] || '#ffffff';
+        const victimColor = TEAM_HEX[vP && vP.team] || '#ffffff';
+
         const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
-        row.style.padding = '2px 5px';
-        row.style.borderRadius = '3px';
-        row.style.background = 'transparent';
-        row.style.fontSize = '12px';
-        row.style.fontFamily = 'monospace';
-        
-        let killerName = 'Unknown';
-        let victimName = 'Unknown';
-        let killerTeam = 0;
-        let victimTeam = 0;
-
-        if (Shared.playerInfo) {
-            let kP, vP;
-            if (Array.isArray(Shared.playerInfo)) {
-                kP = Shared.playerInfo.find(p => p.id == k.killer);
-                vP = Shared.playerInfo.find(p => p.id == k.victim);
-            } else {
-                const kInfo = Shared.playerInfo[String(k.killer)];
-                const vInfo = Shared.playerInfo[String(k.victim)];
-                if (kInfo) kP = { pName: kInfo.name, team: kInfo.team };
-                if (vInfo) vP = { pName: vInfo.name, team: vInfo.team };
-            }
-            if (kP && kP.pName) {
-                killerName = kP.pName;
-                killerTeam = kP.team || 0;
-            }
-            if (vP && vP.pName) {
-                victimName = vP.pName;
-                victimTeam = vP.team || 0;
-            }
-        }
-        
-        let killerColor = '#ffffff';
-        if (killerTeam === 1) killerColor = '#ff8800';
-        else if (killerTeam === 2) killerColor = '#00ccff';
-        
-        let victimColor = '#ffffff';
-        if (victimTeam === 1) victimColor = '#ff8800';
-        else if (victimTeam === 2) victimColor = '#00ccff';
-
-        const weaponIcon = k.headshot ? '💀' : '🔫';
-
+        row.style.cssText = 'display:flex; align-items:center; padding:2px 5px; border-radius:3px; background:transparent; font-size:12px; font-family:monospace;';
         row.innerHTML = `
             <span style="color: ${killerColor}; font-weight: bold;">${escapeHTML(killerName)}</span>
-            <span style="margin: 0 8px; font-size: 10px; color: #fff;">${weaponIcon}</span>
+            <span style="margin: 0 8px; font-size: 10px; color: #fff;">${k.headshot ? '💀' : '🔫'}</span>
             <span style="color: ${victimColor}; font-weight: bold;">${escapeHTML(victimName)}</span>
         `;
         killLogContainer.appendChild(row);
     });
 }
 
+let _lastScoreboardHtml = '';
 export function updateScoreboard() {
     let sb = document.getElementById('scoreboard');
     if (!sb) {
         sb = document.createElement('div');
         sb.id = 'scoreboard';
-        sb.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0,0,0,0.85); border-radius: 8px; color: white; padding: 12px; font-family: sans-serif; display: none; z-index: 200; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); font-size: 13px;';
         document.body.appendChild(sb);
     }
-    
-    if (State.showScoreboard && Shared.playerInfo) {
-        sb.style.display = 'block';
-        
-        const timeMs = State.time * 1000;
-        const { dynamicStats, isObjMode } = computeDynamicStats(timeMs);
-        
-        let html = '<h2 style="text-align:center; margin-top:0; color:#fff;">SCOREBOARD</h2>';
-        html += '<table style="width:100%; border-collapse: collapse; text-align: left;">';
-        html += '<tr style="border-bottom: 2px solid rgba(255,255,255,0.2);">';
-        html += '<th style="padding: 8px;">Name</th>';
-        html += '<th style="padding: 8px;">Score</th>';
-        html += '<th style="padding: 8px;">Kills</th>';
-        html += '<th style="padding: 8px;">Deaths</th>';
-        if (isObjMode) html += '<th style="padding: 8px;">OBJ</th>';
-        html += '<th style="padding: 8px;">K/D</th>';
-        html += '</tr>';
-        
-        // Sort by score
-        const players = Object.values(dynamicStats).sort((a, b) => b.score - a.score);
-        
-        players.forEach(p => {
-            let color = '#fff';
-            if (p.team === 1) color = '#ff8800';
-            else if (p.team === 2) color = '#00ccff';
-            
-            html += '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">';
-            html += `<td style="padding: 8px; color: ${color}; font-weight: bold;">${escapeHTML(p.pName)}</td>`;
-            html += `<td style="padding: 8px;">${p.score}</td>`;
-            html += `<td style="padding: 8px;">${p.kills}</td>`;
-            html += `<td style="padding: 8px;">${p.deaths}</td>`;
-            if (isObjMode) html += `<td style="padding: 8px;">${p.obj}</td>`;
-            
-            const kd = p.deaths === 0 ? p.kills : (p.kills / p.deaths).toFixed(2);
-            html += `<td style="padding: 8px; color: #aaa;">${kd}</td>`;
-            html += '</tr>';
-        });
-        
-        html += '</table>';
+
+    if (!(State.showScoreboard && Shared.playerInfo)) {
+        sb.classList.remove('show');
+        return;
+    }
+    sb.classList.add('show');
+
+    const { dynamicStats, isObjMode } = computeDynamicStats(State.time * 1000);
+    const players = Object.values(dynamicStats).sort((a, b) => b.score - a.score);
+
+    let html = '<h2 style="text-align:center; margin-top:0; color:#fff;">SCOREBOARD</h2>';
+    html += '<table style="width:100%; border-collapse: collapse; text-align: left;">';
+    html += '<tr style="border-bottom: 2px solid rgba(255,255,255,0.2);">';
+    html += '<th style="padding: 8px;">Name</th><th style="padding: 8px;">Score</th><th style="padding: 8px;">Kills</th><th style="padding: 8px;">Deaths</th>';
+    if (isObjMode) html += '<th style="padding: 8px;">OBJ</th>';
+    html += '<th style="padding: 8px;">K/D</th></tr>';
+
+    players.forEach(p => {
+        const color = TEAM_HEX[p.team] || '#fff';
+        const kd = p.deaths === 0 ? p.kills : (p.kills / p.deaths).toFixed(2);
+        html += '<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">';
+        html += `<td style="padding: 8px; color: ${color}; font-weight: bold;">${escapeHTML(p.pName)}</td>`;
+        html += `<td style="padding: 8px;">${p.score}</td><td style="padding: 8px;">${p.kills}</td><td style="padding: 8px;">${p.deaths}</td>`;
+        if (isObjMode) html += `<td style="padding: 8px;">${p.obj}</td>`;
+        html += `<td style="padding: 8px; color: #aaa;">${kd}</td></tr>`;
+    });
+    html += '</table>';
+
+    if (html !== _lastScoreboardHtml) {
         sb.innerHTML = html;
-        
-    } else {
-        sb.style.display = 'none';
+        _lastScoreboardHtml = html;
     }
 }
 
+let _hm = null, _ch = null;
 export function drawHitmarkers() {
-    let hm = document.getElementById('hitmarker');
-    if (!hm) {
-        hm = document.createElement('div');
-        hm.id = 'hitmarker';
-        hm.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cline x1=\'4\' y1=\'4\' x2=\'20\' y2=\'20\'/%3E%3Cline x1=\'20\' y1=\'4\' x2=\'4\' y2=\'20\'/%3E%3C/svg%3E"); opacity: 0; transition: opacity 0.1s ease-out; pointer-events: none; z-index: 100;';
-        document.body.appendChild(hm);
+    if (!_hm) {
+        _hm = document.createElement('div');
+        _hm.id = 'hitmarker';
+        _hm.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cline x1=\'4\' y1=\'4\' x2=\'20\' y2=\'20\'/%3E%3Cline x1=\'20\' y1=\'4\' x2=\'4\' y2=\'20\'/%3E%3C/svg%3E"); opacity: 0; transition: opacity 0.1s ease-out; pointer-events: none; z-index: 100;';
+        document.body.appendChild(_hm);
+        _ch = document.createElement('div');
+        _ch.id = 'crosshair';
+        _ch.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; background: rgba(255,255,255,0.8); border-radius: 50%; display: none; pointer-events: none; z-index: 99;';
+        document.body.appendChild(_ch);
     }
-    
-    let ch = document.getElementById('crosshair');
-    if (!ch) {
-        ch = document.createElement('div');
-        ch.id = 'crosshair';
-        ch.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; background: rgba(255,255,255,0.8); border-radius: 50%; display: none; pointer-events: none; z-index: 99;';
-        document.body.appendChild(ch);
+
+    const following = State.mode === 'real' && (State.cameraMode === '1st' || State.cameraMode === '3rd');
+    _ch.style.display = following ? 'block' : 'none';
+
+    let hit = null;
+    if (following) {
+        hit = recentKills(State.time * 1000, 300).filter(e => e.killer == State.targetPlayerId);
     }
-    
-    if (State.mode === 'real' && (State.cameraMode === '1st' || State.cameraMode === '3rd')) {
-        ch.style.display = 'block';
+    if (hit && hit.length > 0) {
+        _hm.style.opacity = '1';
+        _hm.style.filter = hit.some(e => e.headshot) ? 'drop-shadow(0 0 4px red)' : 'none';
     } else {
-        ch.style.display = 'none';
-    }
-    
-    if (State.mode === 'real' && Shared.events && (State.cameraMode === '1st' || State.cameraMode === '3rd')) {
-        const timeMs = State.time * 1000;
-        // Check if there's any kill/damage event by the spectated player in the last 200ms
-        const recentHits = Shared.events.filter(e => 
-            (e.type === 'kill' || e.type === 'damage') && 
-            e.killer == State.targetPlayerId && 
-            timeMs >= e.timestamp && timeMs - e.timestamp < 300
-        );
-        
-        if (recentHits.length > 0) {
-            hm.style.opacity = '1';
-            const headshot = recentHits.some(e => e.headshot);
-            if (headshot) {
-                hm.style.filter = 'drop-shadow(0 0 4px red)';
-                hm.style.stroke = 'red'; 
-            } else {
-                hm.style.filter = 'none';
-            }
-        } else {
-            hm.style.opacity = '0';
-        }
-    } else {
-        hm.style.opacity = '0';
+        _hm.style.opacity = '0';
     }
 }

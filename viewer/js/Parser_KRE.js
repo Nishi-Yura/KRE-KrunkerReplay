@@ -2,8 +2,28 @@ import { State, Shared } from './State.js';
 import { showToast } from './UI.js';
 import { setupRealPlayers } from './Renderer_Players.js';
 
+async function inflate(compressed) {
+    const ds = new DecompressionStream('deflate');
+    const writer = ds.writable.getWriter();
+    writer.write(compressed);
+    writer.close();
+    const reader = ds.readable.getReader();
+    const chunks = [];
+    let total = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        total += value.length;
+    }
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+}
+
 export async function parseKRE(arrayBuffer) {
-  if (arrayBuffer.byteLength < 69) return false;
+  if (arrayBuffer.byteLength < 64) return false;
   
   let endOffset = arrayBuffer.byteLength;
   let rosterMap = null;
@@ -34,33 +54,29 @@ export async function parseKRE(arrayBuffer) {
   const mapNameBytes = new Uint8Array(arrayBuffer, 20, 32);  // MAP_NAME (offset 20)
   Shared.currentMapName = new TextDecoder().decode(mapNameBytes).replace(/\u0000/g, '');
   
-  const compressedLen = endOffset - 73;
-  const compressed = new Uint8Array(arrayBuffer, 69, compressedLen);
-  let decompressed;
-  
+  // ヘッダー(64バイト)の後ろに [長さ uint32][zlib圧縮データ] のチャンクが連続する
+  const HEADER_SIZE = 64;
+  const parts = [];
+  let pos = HEADER_SIZE;
   try {
-      const ds = new DecompressionStream('deflate');
-      const writer = ds.writable.getWriter();
-      writer.write(compressed);
-      writer.close();
-      const reader = ds.readable.getReader();
-      const chunks = [];
-      while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
+      while (pos + 4 <= endOffset) {
+          const len = view.getUint32(pos, true); pos += 4;
+          if (len === 0 || pos + len > endOffset) break;
+          parts.push(await inflate(new Uint8Array(arrayBuffer, pos, len)));
+          pos += len;
       }
-      const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
-      decompressed = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const c of chunks) { decompressed.set(c, offset); offset += c.length; }
   } catch (e) {
       console.warn('Decompression failed', e);
-      decompressed = compressed;
   }
+  const totalLength = parts.reduce((acc, c) => acc + c.length, 0);
+  const decompressed = new Uint8Array(totalLength);
+  let partOffset = 0;
+  for (const c of parts) { decompressed.set(c, partOffset); partOffset += c.length; }
 
   Shared.realFrames = [];
-  const dView = new DataView(decompressed.buffer);
+  Shared.events = [];
+  Shared.playerInfo = null;
+  const dView = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
   let off = 0;
   
   try {
@@ -70,9 +86,9 @@ export async function parseKRE(arrayBuffer) {
         const players = [];
         for (let i = 0; i < pCount; i++) {
             const id = dView.getUint8(off); off += 1;
-            const px = dView.getInt16(off, true) / 100; off += 2;
-            const py = dView.getInt16(off, true) / 100; off += 2;
-            const pz = dView.getInt16(off, true) / 100; off += 2;
+            const px = dView.getInt32(off, true) / 100; off += 4;
+            const py = dView.getInt32(off, true) / 100; off += 4;
+            const pz = dView.getInt32(off, true) / 100; off += 4;
             const ry = dView.getInt16(off, true) / 1000; off += 2;
             const rx = dView.getInt16(off, true) / 1000; off += 2;
             const hp = dView.getUint8(off); off += 1;
@@ -80,7 +96,6 @@ export async function parseKRE(arrayBuffer) {
             const flags = dView.getUint8(off); off += 1;
             const eventType = dView.getUint8(off); off += 1;
             const eventVictim = dView.getUint8(off); off += 1;
-            off += 1; // padding
             
             let pName = `Player ${id}`;
             if (rosterMap && rosterMap[id]) {

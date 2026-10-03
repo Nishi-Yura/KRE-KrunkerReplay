@@ -14,6 +14,7 @@ const path = require('path');
 const os   = require('os');
 
 const PORT      = 9876;
+const MAX_BODY_BYTES = 1024 * 1024 * 1024; // 1GB
 const SAVE_DIR  = path.join(os.homedir(), 'Documents', 'KrunkerReplays');
 
 // 保存ディレクトリを作成
@@ -27,6 +28,8 @@ const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Filename, X-KRE-Map, X-KRE-Version');
+    // Chrome の Private Network Access (https サイト → localhost) のプリフライト対策
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
     // プリフライトリクエスト
     if (req.method === 'OPTIONS') {
@@ -44,15 +47,29 @@ const server = http.createServer((req, res) => {
 
     // リプレイログファイルの保存
     if (req.method === 'POST' && req.url === '/save') {
-        const isJson = req.headers['content-type'] === 'application/json';
+        const isJson = (req.headers['content-type'] || '').startsWith('application/json');
         const ext = isJson ? '.json' : '.kre';
         const filename = req.headers['x-filename'] || `krunker_${Date.now()}${ext}`;
         const safeName = filename.replace(/[^a-zA-Z0-9_\-.]/g, '_'); // パスインジェクション防止
         const filePath = path.join(SAVE_DIR, safeName);
 
         const chunks = [];
-        req.on('data', chunk => chunks.push(chunk));
+        let received = 0;
+        let aborted = false;
+        req.on('data', chunk => {
+            if (aborted) return;
+            received += chunk.length;
+            if (received > MAX_BODY_BYTES) {
+                aborted = true;
+                res.writeHead(413);
+                res.end();
+                req.destroy();
+                return;
+            }
+            chunks.push(chunk);
+        });
         req.on('end', () => {
+            if (aborted) return;
             const buffer = Buffer.concat(chunks);
             fs.writeFile(filePath, buffer, (err) => {
                 if (err) {
