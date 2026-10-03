@@ -4,6 +4,29 @@ import { setupRealPlayers } from './Renderer_Players.js';
 import { parseMapData } from './Parser_Map.js';
 import { decodeMulti } from '@msgpack/msgpack';
 
+// 0-packet (プレイヤー情報) は Krunker のアップデートで1人分の長さが変わる (51 → 53 など)。
+// 「[accountId(string), id(number), x, y, z, name(string), ...]」の並びが全員分きれいに揃う長さを選ぶ
+function isPlaceholderName(name) {
+    return name.startsWith('Guest_') || name.startsWith('Player ');
+}
+
+function detectMetaStride(pArr) {
+    const candidates = [53, 51, 52, 54, 50, 55, 56, 49, 48];
+    for (const s of candidates) {
+        if (pArr.length === 0 || pArr.length % s !== 0) continue;
+        let ok = true;
+        for (let i = 0; i < pArr.length; i += s) {
+            if (typeof pArr[i + 1] !== 'number' || typeof pArr[i + 5] !== 'string') { ok = false; break; }
+        }
+        if (ok) return s;
+    }
+    // 長さが割り切れない場合は、最初の2人分の位置から推定する
+    for (let s = 40; s <= 70; s++) {
+        if (typeof pArr[s + 1] === 'number' && typeof pArr[s] === 'string' && typeof pArr[s + 5] === 'string') return s;
+    }
+    return pArr.length || 53;
+}
+
 // 文字列(JSON)またはパース済み配列を受け取る。巨大ファイルの二重パースを避けるため
 export function parseJSONLog(input) {
     let data = [];
@@ -77,24 +100,26 @@ export function parseJSONLog(input) {
         // Stride = 51 (confirmed from data analysis)
         else if (op === '0' && payload[1]) {
             const pArr = payload[1];
-            const stride = 51;
+            if (!Array.isArray(pArr)) return;
+            const stride = detectMetaStride(pArr);
             for (let i = 0; i + 9 <= pArr.length; i += stride) {
                 const sid = pArr[i + 1];
-                if (sid === undefined) continue;
+                if (typeof sid !== 'number') continue;
                 if (!playersMap[sid]) {
                     playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, aim: false, isValid: false };
                 }
-                if (pArr[i + 5]) {
-                    playersMap[sid].name = pArr[i + 5];
-                    playersMap[sid].isValid = true; // They have a real name, so they are a valid player!
+                const p = playersMap[sid];
+                if (typeof pArr[i + 5] === 'string' && pArr[i + 5]) {
+                    p.name = pArr[i + 5];
+                    p.isValid = true; // 実名があるので有効なプレイヤー
                 }
-                if (pArr[i + 6] !== undefined && pArr[i + 6] !== null) {
-                    playersMap[sid].classId = pArr[i + 6];
-                    playersMap[sid].isValid = true;
+                if (typeof pArr[i + 6] === 'number') {
+                    p.classId = pArr[i + 6];
+                    p.isValid = true;
                 }
-                if (pArr[i + 7]) playersMap[sid].maxHealth = pArr[i + 7];
-                if (pArr[i + 8] !== undefined) playersMap[sid].health = pArr[i + 8];
-                if (pArr[i + 9] !== undefined) playersMap[sid].team = pArr[i + 9];
+                if (typeof pArr[i + 7] === 'number' && pArr[i + 7] > 0) p.maxHealth = pArr[i + 7];
+                if (typeof pArr[i + 8] === 'number') p.health = pArr[i + 8];
+                if (pArr[i + 9] === 1 || pArr[i + 9] === 2) p.team = pArr[i + 9];
             }
         }
         // ===== k-packet: Player position/state updates =====
@@ -259,8 +284,9 @@ export function parseJSONLog(input) {
             const pArr = payload[1];
             if (pArr.length >= 26) {
                 const projs = [];
-                const stride = 26;
-                for (let i = 0; i + 25 < pArr.length; i += stride) {
+                // 1発あたりの長さは 26 (旧) / 27 (現行) のうち、割り切れる方を使う
+                const stride = pArr.length % 27 === 0 ? 27 : 26;
+                for (let i = 0; i + stride - 1 < pArr.length; i += stride) {
                     projs.push({
                         id: pArr[i],
                         ownerId: pArr[i + 1],
@@ -279,22 +305,6 @@ export function parseJSONLog(input) {
                 .filter(p => p.hasSpawned)
                 .map(p => clonePlayer(p));
             Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
-        }
-        else if (ev && ev[2] === true && op === 'en') {
-            const pData = payload[1];
-            if (Array.isArray(pData) && pData.length >= 7) {
-                if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
-                playersMap[0].hasSpawned = true;
-                let px = pData[4]; let py = pData[5]; let pz = pData[6];
-                if (typeof px === 'number' && typeof py === 'number' && typeof pz === 'number') {
-                    playersMap[0].pos = [px, py, pz];
-                    let pitch = pData[1]; let yaw = pData[2];
-                    if (typeof pitch === 'number' && typeof yaw === 'number') playersMap[0].rot = [yaw, pitch];
-                    playersMap[0].health = playersMap[0].health || 100;
-                    playersMap[0].maxHealth = Math.max(playersMap[0].maxHealth || 100, playersMap[0].health);
-                    pushFrame(t);
-                }
-            }
         }
         else if (op === 'kre_local') {
             if (!playersMap[0]) playersMap[0] = { id: 0, name: 'Local Player', team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
@@ -344,9 +354,9 @@ export function parseJSONLog(input) {
         Object.values(playersMap).forEach(p => {
             const key = String(p.id);
             if (!finalInfo[key]) finalInfo[key] = { name: null, team: null, classId: null, maxHealth: null };
-            if (p.name) {
+            if (typeof p.name === 'string' && p.name) {
                 // Prefer real names over Guest_ names
-                if (!p.name.startsWith('Guest_') && !p.name.startsWith('Player ')) {
+                if (!isPlaceholderName(p.name)) {
                     finalInfo[key].name = p.name;
                 } else if (!finalInfo[key].name) {
                     finalInfo[key].name = p.name; // Keep Guest_ as fallback
@@ -361,8 +371,8 @@ export function parseJSONLog(input) {
             f.players.forEach(p => {
                 const key = String(p.id);
                 if (!finalInfo[key]) finalInfo[key] = { name: null, team: null, classId: null, maxHealth: null };
-                if (p.name) {
-                    if (!p.name.startsWith('Guest_') && !p.name.startsWith('Player ')) {
+                if (typeof p.name === 'string' && p.name) {
+                    if (!isPlaceholderName(p.name)) {
                         finalInfo[key].name = p.name;
                     } else if (!finalInfo[key].name) {
                         finalInfo[key].name = p.name;
