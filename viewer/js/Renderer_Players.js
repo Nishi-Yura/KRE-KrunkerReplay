@@ -44,19 +44,23 @@ export function createPlayerMesh(team = 0) {
     legR.position.set(1, 5, 0);
     group.add(legL, legR);
 
+    // 頭と照準線は首を軸に pitch で上下させる (どこを見ているかを分かりやすく)
+    const headPivot = new THREE.Group();
+    headPivot.position.y = 11.5;
     const head = new THREE.Mesh(HEAD_GEO, HEAD_MAT);
-    head.position.y = 11.5;
-    group.add(head);
-
+    headPivot.add(head);
     const sightMesh = new THREE.Mesh(SIGHT_GEO, SIGHT_MAT);
-    sightMesh.position.set(0, 11.5, -7.5);
-    group.add(sightMesh);
+    sightMesh.position.set(0, 0, -7.5);
+    headPivot.add(sightMesh);
+    group.add(headPivot);
 
     group.userData.team = team;
     group.userData.teamParts = [torso, armL, armR];
     group.userData.legs = [legL, legR];
     group.userData.arms = [armL, armR];
     group.userData.walkCycle = 0;
+    group.userData.headPivot = headPivot;
+    group.userData.yaw = 0;
     return group;
 }
 

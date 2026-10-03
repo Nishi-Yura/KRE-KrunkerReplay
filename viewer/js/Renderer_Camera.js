@@ -29,12 +29,12 @@ export function updateCamera(delta, currentFrame) {
         const target = Shared.realMeshes[State.targetPlayerId];
         // 死亡中 (メッシュ非表示) でも最後の位置に留まって追従し続ける。HUD は HP 0 を表示する
         if (target && target.userData.hasPrev) {
-            const yaw = target.rotation.y;
+            const yaw = target.userData.yaw || 0;
             const pitch = target.userData.pitch || 0;
             cam.rotation.order = 'YXZ'; // rotation.copy() で順序が壊れるのを防ぐ
             if (State.cameraMode === '1st') {
                 cam.position.copy(target.position);
-                cam.position.y += EYE_HEIGHT;
+                cam.position.y += EYE_HEIGHT * target.scale.y;
                 cam.rotation.set(pitch, yaw, 0);
             } else {
                 // プレイヤーの背後 (ホイールで距離調整)

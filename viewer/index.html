@@ -14,7 +14,6 @@
     <div id="top-bar" class="panel glass">
       <button data-open-file title="リプレイ/マップを開く">📂 開く</button>
       <button id="btn-help" style="background: rgba(0,212,255,0.2); border-color: #00d4ff;">? ヘルプ</button>
-      <button id="btn-estmap" title="録画から推定したマップ (M)">🗺 推定マップ</button>
       <button id="cam-free">自由視点(F)</button>
       <button id="cam-1st">1人称(1)</button>
       <button id="cam-3rd">3人称(3)</button>
@@ -89,13 +88,12 @@
         <div><kbd>Space</kbd> : 再生 / 一時停止</div>
         <div><kbd>←</kbd> / <kbd>→</kbd> : 5秒戻る / 進む</div>
         <div><kbd>Tab</kbd> : スコアボード表示</div>
-        <div><kbd>M</kbd> : 推定マップの表示 / 非表示</div>
         <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:15px 0;">
-        <div style="color:#aaa; font-size:12px;">※ マップ(地形)データがない場合は、録画中の移動・着弾位置から推定した床と目印を表示します (🗺 推定マップ / M)。正確な地形ではありません。</div>
+        <div style="color:#aaa; font-size:12px;">※ マップ(地形)データがない場合、灰色のブロックは表示されずプレイヤーのみが空中に表示されます。</div>
       </div>
     </div>
   </div>
 
-  <script src="dist/bundle.js?v=14"></script>
+  <script src="dist/bundle.js?v=13"></script>
 </body>
 </html>

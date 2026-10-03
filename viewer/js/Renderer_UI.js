@@ -133,7 +133,7 @@ export function updateDynamicHUD(currentFrame) {
             <div style="width:100%; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden; margin-bottom:6px;">
                 <div style="height:100%; width:${hpPercent}%; background:${hpColor};"></div>
             </div>
-            <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}</div>
+            <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}${typeof p.ping === 'number' ? ` &nbsp;·&nbsp; ping ${p.ping}ms` : ''}</div>
             <div style="display:flex; justify-content:center; gap:12px; font-size:12px; font-family:monospace;">
                 <span>Score: <b>${stats.score}</b></span>
                 <span>K: <b>${stats.kills}</b></span>
@@ -200,7 +200,7 @@ export function drawMinimap() {
         }
 
         // 向き (メッシュ前方は -Z を yaw 回転した方向)
-        const yaw = mesh.rotation.y;
+        const yaw = mesh.userData.yaw || 0;
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1;
         ctx.beginPath();

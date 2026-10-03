@@ -6636,9 +6636,9 @@
         }];
       }
       for (let i = 0, il = groups.length; i < il; ++i) {
-        const group2 = groups[i];
-        const start = group2.start;
-        const count = group2.count;
+        const group = groups[i];
+        const start = group.start;
+        const count = group.count;
         for (let j = start, jl = start + count; j < jl; j += 3) {
           handleTriangle(
             indices[j + 0],
@@ -6664,9 +6664,9 @@
         tangents[v * 4 + 3] = w;
       }
       for (let i = 0, il = groups.length; i < il; ++i) {
-        const group2 = groups[i];
-        const start = group2.start;
-        const count = group2.count;
+        const group = groups[i];
+        const start = group.start;
+        const count = group.count;
         for (let j = start, jl = start + count; j < jl; j += 3) {
           handleVertex(indices[j + 0]);
           handleVertex(indices[j + 1]);
@@ -6803,8 +6803,8 @@
       geometry2.morphTargetsRelative = this.morphTargetsRelative;
       const groups = this.groups;
       for (let i = 0, l = groups.length; i < l; i++) {
-        const group2 = groups[i];
-        geometry2.addGroup(group2.start, group2.count, group2.materialIndex);
+        const group = groups[i];
+        geometry2.addGroup(group.start, group.count, group.materialIndex);
       }
       return geometry2;
     }
@@ -6904,8 +6904,8 @@
       this.morphTargetsRelative = source.morphTargetsRelative;
       const groups = source.groups;
       for (let i = 0, l = groups.length; i < l; i++) {
-        const group2 = groups[i];
-        this.addGroup(group2.start, group2.count, group2.materialIndex);
+        const group = groups[i];
+        this.addGroup(group.start, group.count, group.materialIndex);
       }
       const boundingBox = source.boundingBox;
       if (boundingBox !== null) {
@@ -7013,10 +7013,10 @@
         if (index !== null) {
           if (Array.isArray(material)) {
             for (let i = 0, il = groups.length; i < il; i++) {
-              const group2 = groups[i];
-              const groupMaterial = material[group2.materialIndex];
-              const start = Math.max(group2.start, drawRange.start);
-              const end = Math.min(group2.start + group2.count, drawRange.start + drawRange.count);
+              const group = groups[i];
+              const groupMaterial = material[group.materialIndex];
+              const start = Math.max(group.start, drawRange.start);
+              const end = Math.min(group.start + group.count, drawRange.start + drawRange.count);
               for (let j = start, jl = end; j < jl; j += 3) {
                 const a = index.getX(j);
                 const b = index.getX(j + 1);
@@ -7024,7 +7024,7 @@
                 intersection = checkBufferGeometryIntersection(this, groupMaterial, raycaster, _ray$2, position, morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
                 if (intersection) {
                   intersection.faceIndex = Math.floor(j / 3);
-                  intersection.face.materialIndex = group2.materialIndex;
+                  intersection.face.materialIndex = group.materialIndex;
                   intersects2.push(intersection);
                 }
               }
@@ -7046,10 +7046,10 @@
         } else if (position !== void 0) {
           if (Array.isArray(material)) {
             for (let i = 0, il = groups.length; i < il; i++) {
-              const group2 = groups[i];
-              const groupMaterial = material[group2.materialIndex];
-              const start = Math.max(group2.start, drawRange.start);
-              const end = Math.min(group2.start + group2.count, drawRange.start + drawRange.count);
+              const group = groups[i];
+              const groupMaterial = material[group.materialIndex];
+              const start = Math.max(group.start, drawRange.start);
+              const end = Math.min(group.start + group.count, drawRange.start + drawRange.count);
               for (let j = start, jl = end; j < jl; j += 3) {
                 const a = j;
                 const b = j + 1;
@@ -7057,7 +7057,7 @@
                 intersection = checkBufferGeometryIntersection(this, groupMaterial, raycaster, _ray$2, position, morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
                 if (intersection) {
                   intersection.faceIndex = Math.floor(j / 3);
-                  intersection.face.materialIndex = group2.materialIndex;
+                  intersection.face.materialIndex = group.materialIndex;
                   intersects2.push(intersection);
                 }
               }
@@ -9228,13 +9228,13 @@
     this.numPlanes = 0;
     this.numIntersection = 0;
     this.init = function(planes, enableLocalClipping, camera) {
-      const enabled2 = planes.length !== 0 || enableLocalClipping || // enable state of previous frame - the clipping code has to
+      const enabled = planes.length !== 0 || enableLocalClipping || // enable state of previous frame - the clipping code has to
       // run another frame in order to reset the state:
       numGlobalPlanes !== 0 || localClippingEnabled;
       localClippingEnabled = enableLocalClipping;
       globalState = projectPlanes(planes, camera, 0);
       numGlobalPlanes = planes.length;
-      return enabled2;
+      return enabled;
     };
     this.beginShadows = function() {
       renderingShadows = true;
@@ -11148,7 +11148,7 @@
       opaque.length = 0;
       transparent.length = 0;
     }
-    function getNextRenderItem(object, geometry, material, groupOrder, z, group2) {
+    function getNextRenderItem(object, geometry, material, groupOrder, z, group) {
       let renderItem = renderItems[renderItemsIndex];
       const materialProperties = properties.get(material);
       if (renderItem === void 0) {
@@ -11161,7 +11161,7 @@
           groupOrder,
           renderOrder: object.renderOrder,
           z,
-          group: group2
+          group
         };
         renderItems[renderItemsIndex] = renderItem;
       } else {
@@ -11173,17 +11173,17 @@
         renderItem.groupOrder = groupOrder;
         renderItem.renderOrder = object.renderOrder;
         renderItem.z = z;
-        renderItem.group = group2;
+        renderItem.group = group;
       }
       renderItemsIndex++;
       return renderItem;
     }
-    function push(object, geometry, material, groupOrder, z, group2) {
-      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group2);
+    function push(object, geometry, material, groupOrder, z, group) {
+      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group);
       (material.transparent === true ? transparent : opaque).push(renderItem);
     }
-    function unshift(object, geometry, material, groupOrder, z, group2) {
-      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group2);
+    function unshift(object, geometry, material, groupOrder, z, group) {
+      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group);
       (material.transparent === true ? transparent : opaque).unshift(renderItem);
     }
     function sort(customOpaqueSort, customTransparentSort) {
@@ -11923,11 +11923,11 @@
           if (Array.isArray(material)) {
             const groups = geometry.groups;
             for (let k = 0, kl = groups.length; k < kl; k++) {
-              const group2 = groups[k];
-              const groupMaterial = material[group2.materialIndex];
+              const group = groups[k];
+              const groupMaterial = material[group.materialIndex];
               if (groupMaterial && groupMaterial.visible) {
                 const depthMaterial = getDepthMaterial(object, geometry, groupMaterial, light, shadowCamera.near, shadowCamera.far, type);
-                _renderer.renderBufferDirect(shadowCamera, null, geometry, depthMaterial, object, group2);
+                _renderer.renderBufferDirect(shadowCamera, null, geometry, depthMaterial, object, group);
               }
             }
           } else if (material.visible) {
@@ -14485,7 +14485,7 @@
       _gl.drawArrays(4, 0, object.count);
       object.count = 0;
     };
-    this.renderBufferDirect = function(camera, scene, geometry, material, object, group2) {
+    this.renderBufferDirect = function(camera, scene, geometry, material, object, group) {
       if (scene === null) scene = _emptyScene;
       const frontFaceCW = object.isMesh && object.matrixWorld.determinant() < 0;
       const program = setProgram(camera, scene, material, object);
@@ -14516,8 +14516,8 @@
       const dataCount = index !== null ? index.count : position.count;
       const rangeStart = geometry.drawRange.start * rangeFactor;
       const rangeCount = geometry.drawRange.count * rangeFactor;
-      const groupStart = group2 !== null ? group2.start * rangeFactor : 0;
-      const groupCount = group2 !== null ? group2.count * rangeFactor : Infinity;
+      const groupStart = group !== null ? group.start * rangeFactor : 0;
+      const groupCount = group !== null ? group.count * rangeFactor : Infinity;
       const drawStart = Math.max(rangeStart, groupStart);
       const drawEnd = Math.min(dataCount, rangeStart + rangeCount, groupStart + groupCount) - 1;
       const drawCount = Math.max(0, drawEnd - drawStart + 1);
@@ -14721,10 +14721,10 @@
             if (Array.isArray(material)) {
               const groups = geometry.groups;
               for (let i = 0, l = groups.length; i < l; i++) {
-                const group2 = groups[i];
-                const groupMaterial = material[group2.materialIndex];
+                const group = groups[i];
+                const groupMaterial = material[group.materialIndex];
                 if (groupMaterial && groupMaterial.visible) {
-                  currentRenderList.push(object, geometry, groupMaterial, groupOrder, _vector3.z, group2);
+                  currentRenderList.push(object, geometry, groupMaterial, groupOrder, _vector3.z, group);
                 }
               }
             } else if (material.visible) {
@@ -14745,7 +14745,7 @@
         const object = renderItem.object;
         const geometry = renderItem.geometry;
         const material = overrideMaterial === null ? renderItem.material : overrideMaterial;
-        const group2 = renderItem.group;
+        const group = renderItem.group;
         if (camera.isArrayCamera) {
           const cameras = camera.cameras;
           for (let j = 0, jl = cameras.length; j < jl; j++) {
@@ -14753,16 +14753,16 @@
             if (object.layers.test(camera2.layers)) {
               state.viewport(_currentViewport.copy(camera2.viewport));
               currentRenderState.setupLightsView(camera2);
-              renderObject(object, scene, camera2, geometry, material, group2);
+              renderObject(object, scene, camera2, geometry, material, group);
             }
           }
         } else {
-          renderObject(object, scene, camera, geometry, material, group2);
+          renderObject(object, scene, camera, geometry, material, group);
         }
       }
     }
-    function renderObject(object, scene, camera, geometry, material, group2) {
-      object.onBeforeRender(_this, scene, camera, geometry, material, group2);
+    function renderObject(object, scene, camera, geometry, material, group) {
+      object.onBeforeRender(_this, scene, camera, geometry, material, group);
       object.modelViewMatrix.multiplyMatrices(camera.matrixWorldInverse, object.matrixWorld);
       object.normalMatrix.getNormalMatrix(object.modelViewMatrix);
       if (object.isImmediateRenderObject) {
@@ -14771,9 +14771,9 @@
         bindingStates.reset();
         renderObjectImmediate(object, program);
       } else {
-        _this.renderBufferDirect(camera, scene, geometry, material, object, group2);
+        _this.renderBufferDirect(camera, scene, geometry, material, object, group);
       }
-      object.onAfterRender(_this, scene, camera, geometry, material, group2);
+      object.onAfterRender(_this, scene, camera, geometry, material, group);
     }
     function getProgram(material, scene, object) {
       if (scene.isScene !== true) scene = _emptyScene;
@@ -18572,9 +18572,9 @@
           groups = [{ start: 0, count: indices.count, materialIndex: 0 }];
         }
         for (let o = 0, ol = groups.length; o < ol; ++o) {
-          const group2 = groups[o];
-          const start = group2.start;
-          const count = group2.count;
+          const group = groups[o];
+          const start = group.start;
+          const count = group.count;
           for (let i = start, l = start + count; i < l; i += 3) {
             for (let j = 0; j < 3; j++) {
               const edge1 = indices.getX(i + j);
@@ -22544,8 +22544,8 @@
       const groups = json.data.groups || json.data.drawcalls || json.data.offsets;
       if (groups !== void 0) {
         for (let i = 0, n = groups.length; i !== n; ++i) {
-          const group2 = groups[i];
-          geometry.addGroup(group2.start, group2.count, group2.materialIndex);
+          const group = groups[i];
+          geometry.addGroup(group.start, group.count, group.materialIndex);
         }
       }
       const boundingSphere = json.data.boundingSphere;
@@ -28588,7 +28588,7 @@
             <div style="width:100%; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; overflow:hidden; margin-bottom:6px;">
                 <div style="height:100%; width:${hpPercent}%; background:${hpColor};"></div>
             </div>
-            <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}</div>
+            <div style="font-size:11px; opacity:0.9; margin-bottom:6px;">HP ${Math.max(0, Math.round(hp))} / ${Math.round(maxHp)}${typeof p.ping === "number" ? ` &nbsp;\xB7&nbsp; ping ${p.ping}ms` : ""}</div>
             <div style="display:flex; justify-content:center; gap:12px; font-size:12px; font-family:monospace;">
                 <span>Score: <b>${stats.score}</b></span>
                 <span>K: <b>${stats.kills}</b></span>
@@ -28644,7 +28644,7 @@
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
-      const yaw = mesh.rotation.y;
+      const yaw = mesh.userData.yaw || 0;
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -28853,12 +28853,12 @@
     if ((State.cameraMode === "1st" || State.cameraMode === "3rd") && State.mode === "real") {
       const target = Shared.realMeshes[State.targetPlayerId];
       if (target && target.userData.hasPrev) {
-        const yaw = target.rotation.y;
+        const yaw = target.userData.yaw || 0;
         const pitch = target.userData.pitch || 0;
         cam.rotation.order = "YXZ";
         if (State.cameraMode === "1st") {
           cam.position.copy(target.position);
-          cam.position.y += EYE_HEIGHT;
+          cam.position.y += EYE_HEIGHT * target.scale.y;
           cam.rotation.set(pitch, yaw, 0);
         } else {
           const dist = State.camDistance;
@@ -28875,6 +28875,7 @@
 
   // viewer/js/Renderer_Tracers.js
   var TRACER_LIFETIME_MS = 400;
+  var SHOT_LIFETIME_MS = 350;
   var MAX_TRACERS = 300;
   var _tracerGeo = null;
   function getTracerGeo() {
@@ -28885,17 +28886,21 @@
     }
     return _tracerGeo;
   }
-  function addTrail(mesh, origin, dir) {
+  var _beamGeo = null;
+  function getBeamGeo() {
+    if (!_beamGeo) {
+      _beamGeo = new THREE.CylinderGeometry(0.25, 0.25, 1, 5);
+      _beamGeo.translate(0, 0.5, 0);
+      _beamGeo.rotateX(Math.PI / 2);
+    }
+    return _beamGeo;
+  }
+  function addTrail(trail) {
     if (!Shared.trails) Shared.trails = [];
     while (Shared.trails.length >= MAX_TRACERS) removeTrail(Shared.trails.shift());
-    Shared.scene.add(mesh);
-    Shared.trails.push({
-      mesh,
-      createdAt: State.time,
-      // 実時間ではなくリプレイ時間基準 (一時停止・倍速・シークに追従)
-      origin: origin.clone(),
-      velocity: dir.multiplyScalar(800)
-    });
+    Shared.scene.add(trail.mesh);
+    trail.createdAt = State.time;
+    Shared.trails.push(trail);
   }
   function removeTrail(t) {
     Shared.scene.remove(t.mesh);
@@ -28909,18 +28914,17 @@
     Shared.trails.forEach(removeTrail);
     Shared.trails = [];
   }
-  function spawnTracer(mesh, p) {
-    const origin = mesh.position.clone();
-    origin.y += 5;
-    const dir = new THREE.Vector3(0, 0, -1);
-    const euler = new THREE.Euler(p.rot[1] || 0, p.rot[0] || 0, 0, "YXZ");
-    dir.applyEuler(euler);
-    const tracerMat = new THREE.MeshBasicMaterial({ color: 16763904, transparent: true, opacity: 1 });
-    const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
-    tracerMesh.position.copy(origin);
-    tracerMesh.rotation.order = "YXZ";
-    tracerMesh.rotation.set(p.rot[1] || 0, p.rot[0] || 0, 0);
-    addTrail(tracerMesh, origin, dir);
+  function spawnShot(from, to) {
+    const a = new THREE.Vector3(from[0], from[1], from[2]);
+    const b = new THREE.Vector3(to[0], to[1], to[2]);
+    const len = a.distanceTo(b);
+    if (!(len > 0.5)) return;
+    const mat = new THREE.MeshBasicMaterial({ color: 16763904, transparent: true, opacity: 0.9 });
+    const mesh = new THREE.Mesh(getBeamGeo(), mat);
+    mesh.position.copy(a);
+    mesh.lookAt(b);
+    mesh.scale.set(1, 1, len);
+    addTrail({ mesh, lifetime: SHOT_LIFETIME_MS, beam: true });
   }
   function spawnProjectile(proj) {
     if (!proj || !proj.pos) return;
@@ -28941,157 +28945,28 @@
     const tracerMesh = new THREE.Mesh(getTracerGeo(), tracerMat);
     tracerMesh.position.copy(origin);
     tracerMesh.lookAt(origin.clone().add(dir));
-    addTrail(tracerMesh, origin, dir);
+    addTrail({ mesh: tracerMesh, lifetime: TRACER_LIFETIME_MS, origin: origin.clone(), velocity: dir.multiplyScalar(800) });
   }
   function updateTracers() {
     if (!Shared.trails || Shared.trails.length === 0) return;
     for (let i = Shared.trails.length - 1; i >= 0; i--) {
       const t = Shared.trails[i];
       const ageMs = (State.time - t.createdAt) * 1e3;
-      if (ageMs < 0 || ageMs > TRACER_LIFETIME_MS) {
+      if (ageMs < 0 || ageMs > t.lifetime) {
         removeTrail(t);
         Shared.trails.splice(i, 1);
-      } else {
+        continue;
+      }
+      if (!t.beam) {
         const scale = ageMs / 1e3;
         t.mesh.position.set(
           t.origin.x + t.velocity.x * scale,
           t.origin.y + t.velocity.y * scale,
           t.origin.z + t.velocity.z * scale
         );
-        t.mesh.material.opacity = 1 - ageMs / TRACER_LIFETIME_MS;
       }
+      t.mesh.material.opacity = (t.beam ? 0.9 : 1) * (1 - ageMs / t.lifetime);
     }
-  }
-
-  // viewer/js/Renderer_Estimated.js
-  var CELL = 8;
-  var MIN_SAMPLES = 1;
-  var GROUNDED_DY = 0.5;
-  var GROUND_PERCENTILE = 0.25;
-  var enabled = true;
-  var group = null;
-  function updateButton() {
-    const b = document.getElementById("btn-estmap");
-    if (!b) return;
-    const has = !!group;
-    b.style.display = has ? "" : "none";
-    b.style.background = enabled ? "rgba(0, 212, 255, 0.5)" : "rgba(0,0,0,0.5)";
-  }
-  function applyVisibility() {
-    if (group) group.visible = enabled;
-    updateButton();
-  }
-  function setEstimatedEnabled(on) {
-    enabled = on;
-    applyVisibility();
-  }
-  function toggleEstimatedMap() {
-    if (!group) {
-      showToast("\u63A8\u5B9A\u30DE\u30C3\u30D7\u306E\u5143\u306B\u306A\u308B\u9332\u753B\u304C\u3042\u308A\u307E\u305B\u3093", "warning");
-      return;
-    }
-    setEstimatedEnabled(!enabled);
-  }
-  function clearGroup() {
-    if (!group) return;
-    Shared.scene.remove(group);
-    disposeObject(group);
-    group = null;
-  }
-  function makeInstanced(geo, color, positions, scaleFn) {
-    const mat = new THREE.MeshLambertMaterial({ color });
-    const mesh = new THREE.InstancedMesh(geo, mat, positions.length);
-    const m = new THREE.Matrix4();
-    positions.forEach((p, i) => {
-      const s = scaleFn ? scaleFn(p) : [1, 1, 1];
-      m.makeScale(s[0], s[1], s[2]);
-      m.setPosition(p[0], p[1], p[2]);
-      mesh.setMatrixAt(i, m);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    return mesh;
-  }
-  function buildEstimatedMap() {
-    clearGroup();
-    const hasRealMap = Shared.mapGroup && Shared.mapGroup.children.length > 0;
-    const cells = /* @__PURE__ */ new Map();
-    const frames = Shared.realFrames;
-    const prevY = /* @__PURE__ */ new Map();
-    for (let fi = 0; fi < frames.length; fi++) {
-      for (const p of frames[fi].players) {
-        if (!p.pos) continue;
-        const [x, y, z] = p.pos;
-        const py2 = prevY.get(p.id);
-        prevY.set(p.id, p.health === 0 ? void 0 : y);
-        if (p.health === 0 || py2 === void 0) continue;
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-        if (Math.abs(y - py2) > GROUNDED_DY) continue;
-        const key = Math.floor(x / CELL) + "," + Math.floor(z / CELL);
-        let c = cells.get(key);
-        if (!c) {
-          c = { cx: Math.floor(x / CELL), cz: Math.floor(z / CELL), ys: [] };
-          cells.set(key, c);
-        }
-        c.ys.push(y);
-      }
-    }
-    const tiles = [];
-    let minY = Infinity, maxY = -Infinity;
-    cells.forEach((c) => {
-      if (c.ys.length < MIN_SAMPLES) return;
-      c.ys.sort((a, b) => a - b);
-      const y = c.ys[Math.floor((c.ys.length - 1) * GROUND_PERCENTILE)];
-      tiles.push({ x: (c.cx + 0.5) * CELL, y, z: (c.cz + 0.5) * CELL });
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    });
-    const hints = Shared.mapHints || { impacts: [], flags: [], spawns: [] };
-    if (tiles.length === 0 && hints.impacts.length === 0) {
-      updateButton();
-      return;
-    }
-    group = new THREE.Group();
-    if (tiles.length > 0) {
-      const baseY = minY - 2;
-      const mesh = new THREE.InstancedMesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshLambertMaterial({ color: 16777215 }),
-        tiles.length
-      );
-      const m = new THREE.Matrix4();
-      const col = new THREE.Color();
-      const range = Math.max(1, maxY - minY);
-      tiles.forEach((t, i) => {
-        const h = Math.max(1.5, t.y - baseY);
-        m.makeScale(CELL - 0.6, h, CELL - 0.6);
-        m.setPosition(t.x, t.y - h / 2, t.z);
-        mesh.setMatrixAt(i, m);
-        col.setHSL(0.58, 0.45, 0.2 + 0.4 * ((t.y - minY) / range));
-        mesh.setColorAt(i, col);
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      group.add(mesh);
-    }
-    if (hints.impacts.length > 0) {
-      group.add(makeInstanced(new THREE.BoxGeometry(1.2, 1.2, 1.2), 16750916, hints.impacts));
-    }
-    if (hints.spawns.length > 0) {
-      const seen = /* @__PURE__ */ new Set();
-      const spawns = hints.spawns.filter((s) => {
-        const k = Math.round(s[0] / 4) + "," + Math.round(s[1] / 4) + "," + Math.round(s[2] / 4);
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
-      group.add(makeInstanced(new THREE.BoxGeometry(3, 0.6, 3), 4521864, spawns));
-    }
-    if (hints.flags.length > 0) {
-      group.add(makeInstanced(new THREE.CylinderGeometry(0.8, 0.8, 30, 8), 16772676, hints.flags.map((f) => [f[0], f[1] + 15, f[2]])));
-    }
-    Shared.scene.add(group);
-    enabled = !hasRealMap;
-    applyVisibility();
   }
 
   // viewer/js/UI.js
@@ -29162,7 +29037,6 @@
     bind("cam-free", () => setCameraMode("free"));
     bind("cam-1st", () => setCameraMode("1st"));
     bind("cam-3rd", () => setCameraMode("3rd"));
-    bind("btn-estmap", () => toggleEstimatedMap());
     updateCamBtns();
     document.addEventListener("click", (e) => {
       const t = e.target;
@@ -29223,9 +29097,6 @@
           break;
         case "Digit3":
           setCameraMode("3rd");
-          break;
-        case "KeyM":
-          toggleEstimatedMap();
           break;
         case "ArrowRight":
           State.time = Math.min(State.duration, State.time + 5);
@@ -29315,33 +29186,37 @@
     return BODY_MATS[key];
   }
   function createPlayerMesh(team = 0) {
-    const group2 = new THREE.Group();
+    const group = new THREE.Group();
     const mat = bodyMaterial(team);
     const torso = new THREE.Mesh(TORSO_GEO, mat);
     torso.position.y = 7.75;
-    group2.add(torso);
+    group.add(torso);
     const armL = new THREE.Mesh(ARM_GEO, mat);
     armL.position.set(-2.6, 10, 0);
     const armR = new THREE.Mesh(ARM_GEO, mat);
     armR.position.set(2.6, 10, 0);
-    group2.add(armL, armR);
+    group.add(armL, armR);
     const legL = new THREE.Mesh(LEG_GEO, LEG_MAT);
     legL.position.set(-1, 5, 0);
     const legR = new THREE.Mesh(LEG_GEO, LEG_MAT);
     legR.position.set(1, 5, 0);
-    group2.add(legL, legR);
+    group.add(legL, legR);
+    const headPivot = new THREE.Group();
+    headPivot.position.y = 11.5;
     const head = new THREE.Mesh(HEAD_GEO, HEAD_MAT);
-    head.position.y = 11.5;
-    group2.add(head);
+    headPivot.add(head);
     const sightMesh = new THREE.Mesh(SIGHT_GEO, SIGHT_MAT);
-    sightMesh.position.set(0, 11.5, -7.5);
-    group2.add(sightMesh);
-    group2.userData.team = team;
-    group2.userData.teamParts = [torso, armL, armR];
-    group2.userData.legs = [legL, legR];
-    group2.userData.arms = [armL, armR];
-    group2.userData.walkCycle = 0;
-    return group2;
+    sightMesh.position.set(0, 0, -7.5);
+    headPivot.add(sightMesh);
+    group.add(headPivot);
+    group.userData.team = team;
+    group.userData.teamParts = [torso, armL, armR];
+    group.userData.legs = [legL, legR];
+    group.userData.arms = [armL, armR];
+    group.userData.walkCycle = 0;
+    group.userData.headPivot = headPivot;
+    group.userData.yaw = 0;
+    return group;
   }
   function setMeshTeam(mesh, team) {
     if (mesh.userData.team === team) return;
@@ -29477,16 +29352,27 @@
   // viewer/js/Renderer_Loop.js
   var _targetPos = new THREE.Vector3();
   var _nextPos = new THREE.Vector3();
-  var _yAxis2 = new THREE.Vector3(0, 1, 0);
   var MAX_DELTA = 0.1;
   var SEEK_JUMP_SEC = 0.5;
   var PROJECTILE_LOOKBACK_MS = 500;
+  var GAP_MS = 1e3;
+  var GAP_HOLD_MS = 300;
   var _lastTimeSec = 0;
   var _projCursor = -1;
+  var _lastShotMs = -1;
+  var MAX_INTERP_DT = 250;
   var _timeEl = null;
   var _playheadEl = null;
   var _lastTimeText = "";
   var _lastPercent = -1;
+  function dist3(a, b) {
+    return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  }
+  function catmullRom(out, p0, p1, p2, p3, u) {
+    const u2 = u * u, u3 = u2 * u;
+    const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (-a + 3 * b - 3 * c + d) * u3);
+    out.set(f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1]), f(p0[2], p1[2], p2[2], p3[2]));
+  }
   function wrapAngleDiff(diff) {
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -29538,7 +29424,10 @@
       const dt = nextFrame ? nextFrame.timestamp - currentFrame.timestamp : 0;
       const lerpFactor = dt > 0 ? Math.min(1, Math.max(0, (timeMs - currentFrame.timestamp) / dt)) : 0;
       for (const id in Shared.realMeshes) Shared.realMeshes[id].visible = false;
-      currentFrame.players.forEach((p) => {
+      const inGap = dt > GAP_MS && timeMs - currentFrame.timestamp > GAP_HOLD_MS;
+      const prevFrame = frameIdx > 0 ? Shared.realFrames[frameIdx - 1] : null;
+      const nextFrame2 = frameIdx < Shared.realFrames.length - 2 ? Shared.realFrames[frameIdx + 2] : null;
+      (inGap ? [] : currentFrame.players).forEach((p) => {
         let mesh = Shared.realMeshes[p.id];
         if (!mesh) {
           mesh = createPlayerMesh(p.team);
@@ -29556,30 +29445,61 @@
           if (nextP && nextP.health > 0) {
             _nextPos.set(nextP.pos[0], nextP.pos[1], nextP.pos[2]);
             if (_targetPos.distanceTo(_nextPos) < 100) {
-              _targetPos.lerp(_nextPos, lerpFactor);
+              const prevP = prevFrame && currentFrame.timestamp - prevFrame.timestamp < MAX_INTERP_DT ? prevFrame.players.find((x) => x.id === p.id) : null;
+              const next2P = nextFrame2 && nextFrame2.timestamp - nextFrame.timestamp < MAX_INTERP_DT ? nextFrame2.players.find((x) => x.id === p.id) : null;
+              const p0 = prevP && dist3(prevP.pos, p.pos) < 100 ? prevP.pos : null;
+              const p3 = next2P && dist3(next2P.pos, nextP.pos) < 100 ? next2P.pos : null;
+              if (p0 && p3 && dt < MAX_INTERP_DT) {
+                catmullRom(_targetPos, p0, p.pos, nextP.pos, p3, lerpFactor);
+              } else {
+                _targetPos.lerp(_nextPos, lerpFactor);
+              }
               targetYaw += wrapAngleDiff((nextP.rot[0] || 0) - targetYaw) * lerpFactor;
               targetPitch += ((nextP.rot[1] || 0) - targetPitch) * lerpFactor;
             }
           }
         }
         const moved = mesh.visible && mesh.userData.hasPrev ? mesh.position.distanceTo(_targetPos) : 0;
-        const walking = State.isPlaying && !jumped && moved > 0.05 && moved < 30;
+        const onGround = p.grounded !== false;
+        const walking = State.isPlaying && !jumped && onGround && moved > 0.05 && moved < 30;
         const swing = walking ? Math.min(1, moved / Math.max(delta * State.speed, 1e-3) / 60) : 0;
         if (walking) mesh.userData.walkCycle += moved * 0.35;
         const phase = Math.sin(mesh.userData.walkCycle) * 0.9 * (walking ? swing : 0);
-        mesh.userData.legs[0].rotation.x = phase;
-        mesh.userData.legs[1].rotation.x = -phase;
+        const airPose = onGround ? 0 : 0.5;
+        mesh.userData.legs[0].rotation.x = phase + airPose;
+        mesh.userData.legs[1].rotation.x = -phase - airPose * 0.6;
         mesh.userData.arms[0].rotation.x = -phase * 0.7;
         mesh.userData.arms[1].rotation.x = phase * 0.7;
         mesh.userData.hasPrev = true;
+        const targetScale = p.sliding ? 0.65 : 1;
+        mesh.scale.y += (targetScale - mesh.scale.y) * Math.min(1, delta * 15);
         mesh.position.copy(_targetPos);
-        mesh.quaternion.setFromAxisAngle(_yAxis2, targetYaw);
+        mesh.rotation.set(0, targetYaw, 0);
+        mesh.userData.yaw = targetYaw;
         mesh.userData.pitch = targetPitch;
-        if (State.isPlaying && !jumped && p.shoot && !mesh.userData.lastShoot) {
-          spawnTracer(mesh, p);
-        }
-        mesh.userData.lastShoot = p.shoot;
+        if (mesh.userData.headPivot) mesh.userData.headPivot.rotation.x = targetPitch;
       });
+      if (State.isPlaying && !jumped && Shared.shots && Shared.shots.length) {
+        if (_lastShotMs < 0 || _lastShotMs > timeMs) _lastShotMs = timeMs;
+        let i = upperBoundIndex(Shared.shots, _lastShotMs) + 1;
+        for (; i < Shared.shots.length && Shared.shots[i].timestamp <= timeMs; i++) {
+          const shot = Shared.shots[i];
+          let from = shot.from;
+          if (!from) {
+            const shooter = Shared.realMeshes[shot.shooter];
+            if (!shooter || !shooter.visible) continue;
+            from = [shooter.position.x, shooter.position.y + 11 * shooter.scale.y, shooter.position.z];
+          }
+          let to = shot.to;
+          if (!to) {
+            const target = Shared.realMeshes[shot.target];
+            if (!target || !target.visible) continue;
+            to = [target.position.x, target.position.y + 6 * target.scale.y, target.position.z];
+          }
+          spawnShot(from, to);
+        }
+      }
+      _lastShotMs = timeMs;
       if (State.isPlaying) {
         if (_projCursor > frameIdx) _projCursor = frameIdx;
         const startIdx = _projCursor < 0 ? frameIdx : _projCursor + 1;
@@ -29771,7 +29691,6 @@
     Shared.currentMapName = mapData.name;
     showToast(`\u30DE\u30C3\u30D7\u30ED\u30FC\u30C9: ${mapData.name}`, "success");
     clearMapGroup();
-    setEstimatedEnabled(false);
     const palette = mapData.colors || [];
     const boxes = [];
     if (Array.isArray(mapData.xyz)) {
@@ -30833,6 +30752,10 @@
     return name.startsWith("Guest_") || name.startsWith("Player ");
   }
   var META_MIN_LEN = 40;
+  var SPAWN_PENDING_MS = 500;
+  var LOCAL_GAP_MS = 1500;
+  var LOCAL_HOLD_MS = 400;
+  var SPAWN_NEAR = 1.5;
   function isMetaStart(a, i) {
     return typeof a[i] === "string" && Number.isInteger(a[i + 1]) && a[i + 1] >= 0 && typeof a[i + 2] === "number" && typeof a[i + 3] === "number" && typeof a[i + 4] === "number" && typeof a[i + 5] === "string" && typeof a[i + 6] === "number" && typeof a[i + 7] === "number" && typeof a[i + 8] === "number";
   }
@@ -30845,6 +30768,112 @@
       }
     }
     return starts;
+  }
+  function kServerTime(p) {
+    return Array.isArray(p) && p[0] === "k" && typeof p[3] === "number" && p[3] > 0 ? p[3] : null;
+  }
+  function buildTimeline(data) {
+    const items = [];
+    data.forEach((ev) => {
+      const wall = ev[0];
+      const raw = ev[1];
+      if (!raw || typeof wall !== "number") return;
+      if (typeof raw === "string") {
+        try {
+          for (const p of decodeMulti(base64ToUint8Array(raw))) items.push({ ev, p, wall, out: !!ev[2], t: wall });
+        } catch (e) {
+        }
+      } else {
+        items.push({ ev, p: raw, wall, out: !!ev[2], t: wall });
+      }
+    });
+    const segs = [];
+    let cur = null, prevSrv = null;
+    items.forEach((it) => {
+      if (it.out) return;
+      const srv = kServerTime(it.p);
+      if (srv === null) return;
+      if (!cur || srv < prevSrv - 500 || srv - prevSrv > 3e4) {
+        cur = { pts: [] };
+        segs.push(cur);
+      }
+      cur.pts.push(it);
+      it.srv = srv;
+      it.seg = cur;
+      prevSrv = srv;
+    });
+    segs.forEach((seg) => {
+      const n = seg.pts.length;
+      let a = 1;
+      if (n >= 10) {
+        let sx = 0, sy = 0, sxx = 0, sxy = 0;
+        seg.pts.forEach((it) => {
+          sx += it.srv;
+          sy += it.wall;
+          sxx += it.srv * it.srv;
+          sxy += it.srv * it.wall;
+        });
+        const den = n * sxx - sx * sx;
+        if (den > 0) a = Math.min(1.01, Math.max(0.99, (n * sxy - sx * sy) / den));
+      }
+      let b = Infinity;
+      seg.pts.forEach((it) => {
+        b = Math.min(b, it.wall - a * it.srv);
+      });
+      seg.a = a;
+      seg.b = b;
+    });
+    let lastK = null;
+    items.forEach((it) => {
+      if (it.out) return;
+      if (it.seg) {
+        it.t = it.seg.a * it.srv + it.seg.b;
+        lastK = it;
+      } else if (lastK) {
+        it.t = lastK.t + Math.min(99, Math.max(0, it.wall - lastK.wall));
+      }
+    });
+    return items;
+  }
+  var EYE_HEIGHT2 = 11;
+  function wrapPi(a) {
+    while (a < -Math.PI) a += Math.PI * 2;
+    while (a > Math.PI) a -= Math.PI * 2;
+    return a;
+  }
+  function pushLocalLook(out, sendT, p) {
+    const v = p[5];
+    if (!Array.isArray(v) || v.length < 2 || typeof v[0] !== "number" || typeof v[1] !== "number") return;
+    let dts = null;
+    if (typeof p[3] === "string" && (p[4] === 1 || p[4] === 2)) {
+      dts = [];
+      for (let i = 0; i + p[4] <= p[3].length; i += p[4]) dts.push(Number(p[3].slice(i, i + p[4])));
+    } else if (Array.isArray(p[3])) {
+      dts = p[3];
+    }
+    const frames = [[v[0], v[1]]];
+    for (let i = 2; i + 1 < v.length; i += 2) {
+      if (typeof v[i] !== "number" || typeof v[i + 1] !== "number") break;
+      const prev = frames[frames.length - 1];
+      frames.push([prev[0] + v[i], prev[1] + v[i + 1]]);
+    }
+    const n = frames.length;
+    const ok = dts && dts.length === n && dts.every((d) => Number.isFinite(d));
+    let tt = sendT;
+    const times = new Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+      times[i] = tt;
+      tt -= ok ? dts[i] : 7;
+    }
+    for (let i = 0; i < n; i++) out.push({ t: times[i], pitch: frames[i][0] / 1e3, yaw: frames[i][1] / 1e3 });
+  }
+  function interpLook(looks, li, t) {
+    const a = looks[li];
+    if (!a) return null;
+    const b = looks[li + 1];
+    if (!b || t <= a.t || b.t - a.t > 200) return a;
+    const u = Math.min(1, (t - a.t) / (b.t - a.t));
+    return { yaw: a.yaw + wrapPi(b.yaw - a.yaw) * u, pitch: a.pitch + (b.pitch - a.pitch) * u };
   }
   function parseJSONLog(input) {
     let data = [];
@@ -30864,22 +30893,20 @@
     }
     Shared.realFrames = [];
     Shared.events = [];
-    const hints = { impacts: [], flags: [], spawns: [] };
-    Shared.mapHints = hints;
     Shared.seenProjectileIds = /* @__PURE__ */ new Set();
     const playersMap = {};
     let maxTime = 0;
     let minTime = Infinity;
-    data.forEach((ev) => {
-      const t = ev[0];
-      if (typeof t === "number") {
-        if (t > maxTime) maxTime = t;
-        if (t < minTime) minTime = t;
-      }
+    const timeline = buildTimeline(data);
+    timeline.forEach((it) => {
+      if (it.t > maxTime) maxTime = it.t;
+      if (it.t < minTime) minTime = it.t;
     });
     const localSamples = [];
     const localLook = [];
+    const localHealth = [];
     let localName = null;
+    Shared.shots = [];
     let localId = null;
     const hasKPacket = {};
     let lastFrameTime = -1;
@@ -30892,8 +30919,9 @@
       health: p.health,
       maxHealth: p.maxHealth,
       hasSpawned: p.hasSpawned,
-      shoot: p.shoot,
-      aim: p.aim,
+      grounded: p.grounded,
+      sliding: p.sliding,
+      ping: p.ping,
       isValid: p.isValid,
       classId: p.classId
     });
@@ -30916,11 +30944,11 @@
           const sid = pArr[i + 1];
           if (typeof sid !== "number") continue;
           if (!playersMap[sid]) {
-            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, aim: false, isValid: false };
+            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, isValid: false };
           }
           const p = playersMap[sid];
-          if (typeof pArr[i + 2] === "number" && typeof pArr[i + 4] === "number" && (pArr[i + 2] || pArr[i + 3] || pArr[i + 4])) {
-            hints.spawns.push([pArr[i + 2], pArr[i + 3], pArr[i + 4]]);
+          if ([2, 3, 4].every((k) => typeof pArr[i + k] === "number")) {
+            p.awaiting = { pos: [pArr[i + 2], pArr[i + 3], pArr[i + 4]], pendingUntil: t + SPAWN_PENDING_MS, seen: false };
           }
           if (typeof pArr[i + 5] === "string" && pArr[i + 5]) {
             p.name = pArr[i + 5];
@@ -30932,26 +30960,16 @@
             p.isValid = true;
           }
           if (typeof pArr[i + 7] === "number" && pArr[i + 7] > 0) p.maxHealth = pArr[i + 7];
-          if (typeof pArr[i + 8] === "number") p.health = pArr[i + 8];
-          if (pArr[i + 9] === 1 || pArr[i + 9] === 2) p.team = pArr[i + 9];
-        }
-      } else if (op === "9" && !ev[2] && Array.isArray(payload[1]) && payload[1].length >= 4) {
-        const a = payload[1];
-        if ([1, 2, 3].every((k) => typeof a[k] === "number")) hints.impacts.push([a[1], a[2], a[3]]);
-      } else if (op === "pre" && [2, 3, 4].every((k) => typeof payload[k] === "number")) {
-        hints.impacts.push([payload[2], payload[3], payload[4]]);
-      } else if (op === "init") {
-        for (const part of payload) {
-          if (part && typeof part === "object" && !Array.isArray(part) && Array.isArray(part.flg)) {
-            for (const f of part.flg) {
-              if (Array.isArray(f) && [1, 2, 3].every((k) => typeof f[k] === "number")) hints.flags.push([f[1], f[2], f[3]]);
-            }
+          if (typeof pArr[i + 8] === "number") {
+            p.health = pArr[i + 8];
+            if (sid === localId) localHealth.push({ t, hp: pArr[i + 8] });
           }
+          if (pArr[i + 9] === 1 || pArr[i + 9] === 2) p.team = pArr[i + 9];
         }
       } else if (op === "k" && payload[1]) {
         const pArr = payload[1];
         let stride = 13;
-        for (const s of [14, 13, 15, 12, 11, 10, 16]) {
+        for (const s of [13, 14, 15, 12, 11, 10, 16]) {
           if (pArr.length > 0 && pArr.length % s === 0) {
             let valid = true;
             for (let i = 0; i < pArr.length; i += s) {
@@ -30965,38 +30983,52 @@
             }
           }
         }
-        for (let i = 0; i < pArr.length; i += stride) {
+        const inTick = /* @__PURE__ */ new Set();
+        for (let i = 0; i + stride <= pArr.length; i += stride) {
           const sid = pArr[i];
           if (sid === void 0) continue;
           hasKPacket[sid] = true;
+          inTick.add(sid);
           if (!playersMap[sid]) {
-            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, aim: false, isValid: false };
+            playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, isValid: false };
           }
-          playersMap[sid].hasSpawned = true;
-          playersMap[sid].pos = [pArr[i + 1], pArr[i + 2], pArr[i + 3]];
-          const yaw = pArr[i + 4] * Math.PI / 180;
-          const pitch = pArr[i + 5] * Math.PI / 180;
-          playersMap[sid].rot = [yaw, pitch];
-          playersMap[sid].shoot = !!pArr[i + 7];
-          playersMap[sid].aim = !!pArr[i + 8];
-          if (stride >= 13 && pArr[i + 12] !== void 0) {
-            playersMap[sid].health = pArr[i + 12];
+          const p = playersMap[sid];
+          const aw = p.awaiting;
+          if (aw) {
+            const near = Math.hypot(pArr[i + 1] - aw.pos[0], pArr[i + 2] - aw.pos[1], pArr[i + 3] - aw.pos[2]) < SPAWN_NEAR;
+            if (near) aw.seen = true;
+            if (near || !aw.seen && t < aw.pendingUntil) {
+              p.hasSpawned = false;
+              continue;
+            }
+            p.awaiting = null;
           }
+          p.hasSpawned = true;
+          p.pos = [pArr[i + 1], pArr[i + 2], pArr[i + 3]];
+          p.rot = [pArr[i + 4] * Math.PI / 180, pArr[i + 5] * Math.PI / 180];
+          p.grounded = !!pArr[i + 7];
+          p.sliding = !!pArr[i + 8];
+          if (typeof pArr[i + 12] === "number") p.ping = pArr[i + 12];
         }
+        Object.values(playersMap).forEach((p) => {
+          if (hasKPacket[p.id] && !inTick.has(p.id)) p.hasSpawned = false;
+        });
         pushFrame(t);
       } else if (op === "h") {
         const hp = payload[1];
         let sid = payload[2];
         if (typeof hp !== "number") return;
-        if (sid === null || sid === void 0) sid = 0;
+        if (sid === null || sid === void 0) {
+          localHealth.push({ t, hp });
+          sid = localId !== null ? localId : 0;
+        }
         if (!playersMap[sid]) {
-          playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100, shoot: false, aim: false };
+          playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: false, maxHealth: 100 };
         }
         playersMap[sid].health = hp;
         if (hp > 0) {
           playersMap[sid].maxHealth = Math.max(playersMap[sid].maxHealth || 100, hp);
         }
-        if (playersMap[sid].hasSpawned) pushFrame(t);
       } else if (op === "3" && payload.length >= 4) {
         const victim = payload[1];
         const killer = payload[3];
@@ -31010,10 +31042,18 @@
           killer,
           headshot
         });
+        if (victim === localId) localHealth.push({ t, hp: 0 });
         if (playersMap[victim]) {
           playersMap[victim].health = 0;
         }
-        pushFrame(t);
+      } else if (op === "9" && !ev[2] && Array.isArray(payload[1])) {
+        const a = payload[1];
+        if ([1, 2, 3].every((k) => typeof a[k] === "number")) {
+          const from = [7, 8, 10].every((k) => typeof a[k] === "number") ? [a[7], a[8] + (typeof a[9] === "number" ? a[9] : EYE_HEIGHT2), a[10]] : null;
+          Shared.shots.push({ timestamp: t, shooter: a[0], from, to: [a[1], a[2], a[3]] });
+        }
+      } else if (op === "4" && !ev[2] && typeof payload[1] === "number") {
+        Shared.shots.push({ timestamp: t, shooter: localId, from: null, to: null, target: payload[1] });
       } else if (op === "5") {
       } else if (op === "7" && Array.isArray(payload[1])) {
         const pArr = payload[1];
@@ -31055,10 +31095,10 @@
       } else if (op === "l" && !ev[2] && Array.isArray(payload[1]) && payload[1].length >= 26) {
         const a = payload[1];
         if ([2, 3, 4, 5, 6, 7].every((k) => typeof a[k] === "number")) {
-          localSamples.push({ t, x: a[2], y: a[3], z: a[4], vy: a[5], vx: a[6], vz: a[7], yaw: a[8] });
+          localSamples.push({ t, x: a[2], y: a[3], z: a[4], vy: a[5], vx: a[6], vz: a[7], yaw: a[8], grounded: a[9] === 1 });
         }
-      } else if (op === "q" && ev[2] && Array.isArray(payload[5]) && payload[5].length >= 2 && typeof payload[5][0] === "number" && typeof payload[5][1] === "number") {
-        localLook.push({ t, pitch: payload[5][0] / 1e3, yaw: payload[5][1] / 1e3 });
+      } else if (op === "q" && ev[2]) {
+        pushLocalLook(localLook, t, payload);
       } else if (op === "sb" && payload[1] === "welc" && typeof payload[2] === "string") {
         localName = payload[2];
       } else if (op === "a" && typeof payload[3] === "string" && !localName) {
@@ -31068,7 +31108,7 @@
         const currentFramePlayers = Object.values(playersMap).filter((p) => p.hasSpawned).map((p) => clonePlayer(p));
         Shared.realFrames.push({ timestamp: t - minTime, players: currentFramePlayers, projectiles: projs });
       } else if (op === "kre_local") {
-        if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, shoot: false, aim: false, isValid: true };
+        if (!playersMap[0]) playersMap[0] = { id: 0, name: "Local Player", team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, hasSpawned: true, maxHealth: 100, isValid: true };
         playersMap[0].hasSpawned = true;
         playersMap[0].pos = [payload[1], payload[2], payload[3]];
         const rawYaw = payload[4] || 0;
@@ -31086,31 +31126,15 @@
         }
       }
     };
-    data.forEach((ev) => {
-      const t = ev[0];
-      let payload = ev[1];
-      if (!payload) return;
-      if (typeof payload === "string") {
-        try {
-          const bytes = base64ToUint8Array(payload);
-          const iter = decodeMulti(bytes);
-          for (const p of iter) {
-            processPayload(t, p, ev);
-          }
-        } catch (e) {
-        }
-      } else {
-        processPayload(t, payload, ev);
-      }
-    });
+    timeline.forEach((it) => processPayload(it.t, it.p, it.ev));
     if (localId !== null && localSamples.length && playersMap[localId] && Shared.realFrames.length) {
       const me = playersMap[localId];
       me.isValid = true;
       const samples = localSamples;
       const looks = localLook;
-      const kills = (Shared.events || []).filter((e) => e.type === "kill" && e.victim === localId).map((e) => e.timestamp);
-      const deadRanges = kills.map((tk) => [tk, tk + 3e3]);
-      let si = 0, li = 0;
+      looks.sort((a, b) => a.t - b.t);
+      localHealth.sort((a, b) => a.t - b.t);
+      let si = 0, li = 0, hi = -1;
       const hermite = (p0, p1, m0, m1, u) => {
         const u2 = u * u, u3 = u2 * u;
         return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
@@ -31120,7 +31144,7 @@
         while (si + 1 < samples.length && samples[si + 1].t <= t) si++;
         const s0 = samples[si], s1 = samples[si + 1];
         let pos;
-        if (s1 && t >= s0.t && s1.t - s0.t <= 1500) {
+        if (s1 && t >= s0.t && s1.t - s0.t <= LOCAL_GAP_MS) {
           const dt = s1.t - s0.t, u = (t - s0.t) / dt;
           pos = [
             hermite(s0.x, s1.x, s0.vx * dt, s1.vx * dt, u),
@@ -31131,19 +31155,22 @@
           pos = [s0.x, s0.y, s0.z];
         }
         while (li + 1 < looks.length && looks[li + 1].t <= t) li++;
-        const look = looks[li];
-        const dead = deadRanges.some((r) => t >= r[0] && t < r[1]);
+        const look = interpLook(looks, li, t);
+        while (hi + 1 < localHealth.length && localHealth[hi + 1].t <= t) hi++;
+        const lastSample = !s1;
+        if (t > s0.t + LOCAL_HOLD_MS && (s1 && s1.t - s0.t > LOCAL_GAP_MS || lastSample && t - s0.t > LOCAL_GAP_MS)) return;
+        const health = hi >= 0 ? localHealth[hi].hp : me.maxHealth || 100;
         f.players.push({
           id: localId,
           name: me.name,
           team: me.team,
           pos,
           rot: [look ? look.yaw : s0.yaw, look ? look.pitch : 0],
-          health: dead ? 0 : me.maxHealth || 100,
+          health,
           maxHealth: me.maxHealth || 100,
           hasSpawned: true,
-          shoot: false,
-          aim: false,
+          grounded: s0.grounded,
+          sliding: false,
           isValid: true,
           classId: me.classId
         });
@@ -31209,6 +31236,8 @@
         score: 0
       }));
       Shared.realFrames.sort((a, b) => a.timestamp - b.timestamp);
+      Shared.shots.forEach((e) => e.timestamp -= minTime);
+      Shared.shots.sort((a, b) => a.timestamp - b.timestamp);
       if (Shared.events) {
         Shared.events.forEach((e) => e.timestamp -= minTime);
         Shared.events.sort((a, b) => a.timestamp - b.timestamp);
@@ -31217,7 +31246,6 @@
       State.time = 0;
       State.mode = "real";
       setupRealPlayers();
-      buildEstimatedMap();
       showToast(`\u30ED\u30FC\u30C9\u5B8C\u4E86: ${Shared.realFrames.length} \u30D5\u30EC\u30FC\u30E0 / ${Object.keys(playersMap).length} \u30D7\u30EC\u30A4\u30E4\u30FC`, "success");
       const landingModal = document.getElementById("landing-modal");
       if (landingModal) landingModal.classList.remove("active");

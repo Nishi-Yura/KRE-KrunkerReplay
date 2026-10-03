@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Krunker Replay Recorder (KRE)
 // @namespace    http://tampermonkey.net/
-// @version      2.2
+// @version      2.3
 // @description  Record 3D replays in Krunker.io via WebSocket Interception
 // @author       KRE Team
 // @match        *://krunker.io/*
@@ -16,7 +16,7 @@
     'use strict';
 
     const SAVE_SERVER = 'http://127.0.0.1:9876/save';
-    const VERSION     = '2.2';
+    const VERSION     = '2.3';
 
     let recording = false;
     let frames = [];
@@ -30,6 +30,11 @@
     
     // UI Elements
     let statusDot, statusText, frameCountEl, timeEl;
+
+    // 受信時刻はミリ秒未満まで取る (Date.now() は 1ms 刻みで、環境によってはさらに粗い)
+    const now = (typeof performance !== 'undefined' && performance.timeOrigin)
+        ? () => performance.timeOrigin + performance.now()
+        : () => Date.now();
 
     function log(...args) {
         console.log('%c[KRE Recorder]', 'color: #00ff88; font-weight: bold; background: #222; padding: 2px 4px; border-radius: 3px;', ...args);
@@ -170,7 +175,7 @@
                     if (!recording && autoRecord) startRecording(true);
                     if (recording) {
                         // 受信時は生バイトのまま保持し、Base64化は保存時にまとめて行う (メモリ約25%減・負荷分散)
-                        frames.push([Date.now(), new Uint8Array(e.data)]);
+                        frames.push([now(), new Uint8Array(e.data)]);
                         if (e.target) e.target._kreActive = true;
                     }
                 }
@@ -187,8 +192,9 @@
 
         const origAddEventListener = window.WebSocket.prototype.addEventListener;
         window.WebSocket.prototype.addEventListener = function(type, listener, options) {
-            if (type === 'message' && !this._kreHookedAdd) {
-                this._kreHookedAdd = true;
+            // addEventListener と onmessage の両方を使うソケットでも、受信を二重に記録しないよう1回だけ仕掛ける
+            if (type === 'message' && !this._kreHooked) {
+                this._kreHooked = true;
                 origAddEventListener.call(this, 'message', interceptMessage);
                 origAddEventListener.call(this, 'close', onSocketClose);
                 log('WebSocket addEventListener hooked!');
@@ -200,8 +206,8 @@
         if (origOnMessageDesc) {
             Object.defineProperty(WebSocket.prototype, 'onmessage', {
                 set: function(listener) {
-                    if (!this._kreHookedOnMsg) {
-                        this._kreHookedOnMsg = true;
+                    if (!this._kreHooked) {
+                        this._kreHooked = true;
                         origAddEventListener.call(this, 'message', interceptMessage);
                         origAddEventListener.call(this, 'close', onSocketClose);
                         log('WebSocket onmessage hooked!');
@@ -219,9 +225,9 @@
                 if (recording) {
                     // 送信バッファは再利用される可能性があるのでコピーして保持する
                     if (data instanceof ArrayBuffer) {
-                        frames.push([Date.now(), new Uint8Array(data.slice(0)), true]); // true = sent by client
+                        frames.push([now(), new Uint8Array(data.slice(0)), true]); // true = sent by client
                     } else if (ArrayBuffer.isView(data)) {
-                        frames.push([Date.now(), new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)), true]);
+                        frames.push([now(), new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)), true]);
                     }
                 }
             } catch(e) {}
@@ -307,8 +313,6 @@
     // =====================
     // 録画制御 (F7: 手動開始/停止, F8: デバッグ, F9: 自動録画の切替)
     // =====================
-    let localPlayerInterval = null;
-
     function toast(text, ok = true) {
         const el = document.createElement('div');
         el.innerText = text;
@@ -325,20 +329,7 @@
         startTime = Date.now();
         log(auto ? 'Recording started (auto)' : 'Recording started');
         updateUI();
-
-        // ローカルプレイヤーの位置を定期的に記録
-        if (localPlayerInterval) clearInterval(localPlayerInterval);
-        localPlayerInterval = setInterval(() => {
-            try {
-                const lp = window?.i?.localPlayer;
-                if (lp && lp.active) {
-                    frames.push([
-                        Date.now(),
-                        ["kre_local", lp.x, lp.y, lp.z, lp.targetDir || 0, lp.pitch || 0, lp.health || 100]
-                    ]);
-                }
-            } catch (err) {}
-        }, 50); // 20FPS
+        // 自分の位置・視線は受信の l-packet / 送信の q-packet に入っているので、ビューアー側で復元する
     }
 
     // 巨大な文字列を作らず、フレームごとのJSON断片をBlobに繋いで送る
@@ -361,7 +352,6 @@
         const wasAuto = autoStarted;
         recording = false;
         autoStarted = false;
-        if (localPlayerInterval) clearInterval(localPlayerInterval);
 
         const list = frames;
         frames = [];

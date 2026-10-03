@@ -1,7 +1,6 @@
 import { Shared, hexToNum } from './State.js';
 import { showToast } from './UI.js';
 import { disposeObject } from './Utils.js';
-import { setEstimatedEnabled } from './Renderer_Estimated.js';
 
 function clearMapGroup() {
     while (Shared.mapGroup.children.length > 0) {
@@ -25,7 +24,6 @@ export function parseMapData(mapData) {
     Shared.currentMapName = mapData.name;
     showToast(`マップロード: ${mapData.name}`, 'success');
     clearMapGroup();
-    setEstimatedEnabled(false); // 本物のマップがあるので推定マップは隠す
 
     const palette = mapData.colors || [];
     const boxes = [];
