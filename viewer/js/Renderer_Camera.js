@@ -27,7 +27,8 @@ export function updateCamera(delta, currentFrame) {
 
     if ((State.cameraMode === '1st' || State.cameraMode === '3rd') && State.mode === 'real') {
         const target = Shared.realMeshes[State.targetPlayerId];
-        if (target && target.visible !== false) {
+        // 死亡中 (メッシュ非表示) でも最後の位置に留まって追従し続ける。HUD は HP 0 を表示する
+        if (target && target.userData.hasPrev) {
             const yaw = target.rotation.y;
             const pitch = target.userData.pitch || 0;
             cam.rotation.order = 'YXZ'; // rotation.copy() で順序が壊れるのを防ぐ

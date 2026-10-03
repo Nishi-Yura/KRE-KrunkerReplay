@@ -199,8 +199,10 @@ export function parseJSONLog(input) {
         }
         // ===== 3-packet: Kill event =====
         else if (op === '3' && payload.length >= 4) {
-            const killer = payload[1];
-            const victim = payload[3];
+            // 現行プロトコル: ['3', victim, 連続キル数, killer, ...]
+            // (scoreboard の kills 増加・ts のチーム得点・h の HP=0 と突き合わせて確認済み)
+            const victim = payload[1];
+            const killer = payload[3];
             // payload[5] may contain { hs: true/false } for headshot info
             const meta = (payload.length >= 6 && payload[5] && typeof payload[5] === 'object') ? payload[5] : {};
             const headshot = !!meta.hs;
