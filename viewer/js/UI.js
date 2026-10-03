@@ -1,4 +1,5 @@
 import { State, keys, Shared } from './State.js';
+import { toggleEstimatedMap } from './Renderer_Estimated.js';
 
 export function showToast(message, type = 'error') {
   const container = document.getElementById('toast-container');
@@ -68,6 +69,7 @@ export function setupUI() {
   bind('cam-free', () => setCameraMode('free'));
   bind('cam-1st', () => setCameraMode('1st'));
   bind('cam-3rd', () => setCameraMode('3rd'));
+  bind('btn-estmap', () => toggleEstimatedMap());
   updateCamBtns();
 
   // ボタンにフォーカスが残るとSpaceキーで二重に反応するため、クリック後に外す
@@ -111,6 +113,7 @@ export function setupUI() {
       case 'KeyF': setCameraMode('free'); break;
       case 'Digit1': setCameraMode('1st'); break;
       case 'Digit3': setCameraMode('3rd'); break;
+      case 'KeyM': toggleEstimatedMap(); break;
       case 'ArrowRight': State.time = Math.min(State.duration, State.time + 5); break;
       case 'ArrowLeft': State.time = Math.max(0, State.time - 5); break;
       case 'Tab':

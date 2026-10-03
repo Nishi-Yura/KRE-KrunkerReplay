@@ -6636,9 +6636,9 @@
         }];
       }
       for (let i = 0, il = groups.length; i < il; ++i) {
-        const group = groups[i];
-        const start = group.start;
-        const count = group.count;
+        const group2 = groups[i];
+        const start = group2.start;
+        const count = group2.count;
         for (let j = start, jl = start + count; j < jl; j += 3) {
           handleTriangle(
             indices[j + 0],
@@ -6664,9 +6664,9 @@
         tangents[v * 4 + 3] = w;
       }
       for (let i = 0, il = groups.length; i < il; ++i) {
-        const group = groups[i];
-        const start = group.start;
-        const count = group.count;
+        const group2 = groups[i];
+        const start = group2.start;
+        const count = group2.count;
         for (let j = start, jl = start + count; j < jl; j += 3) {
           handleVertex(indices[j + 0]);
           handleVertex(indices[j + 1]);
@@ -6803,8 +6803,8 @@
       geometry2.morphTargetsRelative = this.morphTargetsRelative;
       const groups = this.groups;
       for (let i = 0, l = groups.length; i < l; i++) {
-        const group = groups[i];
-        geometry2.addGroup(group.start, group.count, group.materialIndex);
+        const group2 = groups[i];
+        geometry2.addGroup(group2.start, group2.count, group2.materialIndex);
       }
       return geometry2;
     }
@@ -6904,8 +6904,8 @@
       this.morphTargetsRelative = source.morphTargetsRelative;
       const groups = source.groups;
       for (let i = 0, l = groups.length; i < l; i++) {
-        const group = groups[i];
-        this.addGroup(group.start, group.count, group.materialIndex);
+        const group2 = groups[i];
+        this.addGroup(group2.start, group2.count, group2.materialIndex);
       }
       const boundingBox = source.boundingBox;
       if (boundingBox !== null) {
@@ -7013,10 +7013,10 @@
         if (index !== null) {
           if (Array.isArray(material)) {
             for (let i = 0, il = groups.length; i < il; i++) {
-              const group = groups[i];
-              const groupMaterial = material[group.materialIndex];
-              const start = Math.max(group.start, drawRange.start);
-              const end = Math.min(group.start + group.count, drawRange.start + drawRange.count);
+              const group2 = groups[i];
+              const groupMaterial = material[group2.materialIndex];
+              const start = Math.max(group2.start, drawRange.start);
+              const end = Math.min(group2.start + group2.count, drawRange.start + drawRange.count);
               for (let j = start, jl = end; j < jl; j += 3) {
                 const a = index.getX(j);
                 const b = index.getX(j + 1);
@@ -7024,7 +7024,7 @@
                 intersection = checkBufferGeometryIntersection(this, groupMaterial, raycaster, _ray$2, position, morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
                 if (intersection) {
                   intersection.faceIndex = Math.floor(j / 3);
-                  intersection.face.materialIndex = group.materialIndex;
+                  intersection.face.materialIndex = group2.materialIndex;
                   intersects2.push(intersection);
                 }
               }
@@ -7046,10 +7046,10 @@
         } else if (position !== void 0) {
           if (Array.isArray(material)) {
             for (let i = 0, il = groups.length; i < il; i++) {
-              const group = groups[i];
-              const groupMaterial = material[group.materialIndex];
-              const start = Math.max(group.start, drawRange.start);
-              const end = Math.min(group.start + group.count, drawRange.start + drawRange.count);
+              const group2 = groups[i];
+              const groupMaterial = material[group2.materialIndex];
+              const start = Math.max(group2.start, drawRange.start);
+              const end = Math.min(group2.start + group2.count, drawRange.start + drawRange.count);
               for (let j = start, jl = end; j < jl; j += 3) {
                 const a = j;
                 const b = j + 1;
@@ -7057,7 +7057,7 @@
                 intersection = checkBufferGeometryIntersection(this, groupMaterial, raycaster, _ray$2, position, morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
                 if (intersection) {
                   intersection.faceIndex = Math.floor(j / 3);
-                  intersection.face.materialIndex = group.materialIndex;
+                  intersection.face.materialIndex = group2.materialIndex;
                   intersects2.push(intersection);
                 }
               }
@@ -9228,13 +9228,13 @@
     this.numPlanes = 0;
     this.numIntersection = 0;
     this.init = function(planes, enableLocalClipping, camera) {
-      const enabled = planes.length !== 0 || enableLocalClipping || // enable state of previous frame - the clipping code has to
+      const enabled2 = planes.length !== 0 || enableLocalClipping || // enable state of previous frame - the clipping code has to
       // run another frame in order to reset the state:
       numGlobalPlanes !== 0 || localClippingEnabled;
       localClippingEnabled = enableLocalClipping;
       globalState = projectPlanes(planes, camera, 0);
       numGlobalPlanes = planes.length;
-      return enabled;
+      return enabled2;
     };
     this.beginShadows = function() {
       renderingShadows = true;
@@ -11148,7 +11148,7 @@
       opaque.length = 0;
       transparent.length = 0;
     }
-    function getNextRenderItem(object, geometry, material, groupOrder, z, group) {
+    function getNextRenderItem(object, geometry, material, groupOrder, z, group2) {
       let renderItem = renderItems[renderItemsIndex];
       const materialProperties = properties.get(material);
       if (renderItem === void 0) {
@@ -11161,7 +11161,7 @@
           groupOrder,
           renderOrder: object.renderOrder,
           z,
-          group
+          group: group2
         };
         renderItems[renderItemsIndex] = renderItem;
       } else {
@@ -11173,17 +11173,17 @@
         renderItem.groupOrder = groupOrder;
         renderItem.renderOrder = object.renderOrder;
         renderItem.z = z;
-        renderItem.group = group;
+        renderItem.group = group2;
       }
       renderItemsIndex++;
       return renderItem;
     }
-    function push(object, geometry, material, groupOrder, z, group) {
-      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group);
+    function push(object, geometry, material, groupOrder, z, group2) {
+      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group2);
       (material.transparent === true ? transparent : opaque).push(renderItem);
     }
-    function unshift(object, geometry, material, groupOrder, z, group) {
-      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group);
+    function unshift(object, geometry, material, groupOrder, z, group2) {
+      const renderItem = getNextRenderItem(object, geometry, material, groupOrder, z, group2);
       (material.transparent === true ? transparent : opaque).unshift(renderItem);
     }
     function sort(customOpaqueSort, customTransparentSort) {
@@ -11923,11 +11923,11 @@
           if (Array.isArray(material)) {
             const groups = geometry.groups;
             for (let k = 0, kl = groups.length; k < kl; k++) {
-              const group = groups[k];
-              const groupMaterial = material[group.materialIndex];
+              const group2 = groups[k];
+              const groupMaterial = material[group2.materialIndex];
               if (groupMaterial && groupMaterial.visible) {
                 const depthMaterial = getDepthMaterial(object, geometry, groupMaterial, light, shadowCamera.near, shadowCamera.far, type);
-                _renderer.renderBufferDirect(shadowCamera, null, geometry, depthMaterial, object, group);
+                _renderer.renderBufferDirect(shadowCamera, null, geometry, depthMaterial, object, group2);
               }
             }
           } else if (material.visible) {
@@ -14485,7 +14485,7 @@
       _gl.drawArrays(4, 0, object.count);
       object.count = 0;
     };
-    this.renderBufferDirect = function(camera, scene, geometry, material, object, group) {
+    this.renderBufferDirect = function(camera, scene, geometry, material, object, group2) {
       if (scene === null) scene = _emptyScene;
       const frontFaceCW = object.isMesh && object.matrixWorld.determinant() < 0;
       const program = setProgram(camera, scene, material, object);
@@ -14516,8 +14516,8 @@
       const dataCount = index !== null ? index.count : position.count;
       const rangeStart = geometry.drawRange.start * rangeFactor;
       const rangeCount = geometry.drawRange.count * rangeFactor;
-      const groupStart = group !== null ? group.start * rangeFactor : 0;
-      const groupCount = group !== null ? group.count * rangeFactor : Infinity;
+      const groupStart = group2 !== null ? group2.start * rangeFactor : 0;
+      const groupCount = group2 !== null ? group2.count * rangeFactor : Infinity;
       const drawStart = Math.max(rangeStart, groupStart);
       const drawEnd = Math.min(dataCount, rangeStart + rangeCount, groupStart + groupCount) - 1;
       const drawCount = Math.max(0, drawEnd - drawStart + 1);
@@ -14721,10 +14721,10 @@
             if (Array.isArray(material)) {
               const groups = geometry.groups;
               for (let i = 0, l = groups.length; i < l; i++) {
-                const group = groups[i];
-                const groupMaterial = material[group.materialIndex];
+                const group2 = groups[i];
+                const groupMaterial = material[group2.materialIndex];
                 if (groupMaterial && groupMaterial.visible) {
-                  currentRenderList.push(object, geometry, groupMaterial, groupOrder, _vector3.z, group);
+                  currentRenderList.push(object, geometry, groupMaterial, groupOrder, _vector3.z, group2);
                 }
               }
             } else if (material.visible) {
@@ -14745,7 +14745,7 @@
         const object = renderItem.object;
         const geometry = renderItem.geometry;
         const material = overrideMaterial === null ? renderItem.material : overrideMaterial;
-        const group = renderItem.group;
+        const group2 = renderItem.group;
         if (camera.isArrayCamera) {
           const cameras = camera.cameras;
           for (let j = 0, jl = cameras.length; j < jl; j++) {
@@ -14753,16 +14753,16 @@
             if (object.layers.test(camera2.layers)) {
               state.viewport(_currentViewport.copy(camera2.viewport));
               currentRenderState.setupLightsView(camera2);
-              renderObject(object, scene, camera2, geometry, material, group);
+              renderObject(object, scene, camera2, geometry, material, group2);
             }
           }
         } else {
-          renderObject(object, scene, camera, geometry, material, group);
+          renderObject(object, scene, camera, geometry, material, group2);
         }
       }
     }
-    function renderObject(object, scene, camera, geometry, material, group) {
-      object.onBeforeRender(_this, scene, camera, geometry, material, group);
+    function renderObject(object, scene, camera, geometry, material, group2) {
+      object.onBeforeRender(_this, scene, camera, geometry, material, group2);
       object.modelViewMatrix.multiplyMatrices(camera.matrixWorldInverse, object.matrixWorld);
       object.normalMatrix.getNormalMatrix(object.modelViewMatrix);
       if (object.isImmediateRenderObject) {
@@ -14771,9 +14771,9 @@
         bindingStates.reset();
         renderObjectImmediate(object, program);
       } else {
-        _this.renderBufferDirect(camera, scene, geometry, material, object, group);
+        _this.renderBufferDirect(camera, scene, geometry, material, object, group2);
       }
-      object.onAfterRender(_this, scene, camera, geometry, material, group);
+      object.onAfterRender(_this, scene, camera, geometry, material, group2);
     }
     function getProgram(material, scene, object) {
       if (scene.isScene !== true) scene = _emptyScene;
@@ -18572,9 +18572,9 @@
           groups = [{ start: 0, count: indices.count, materialIndex: 0 }];
         }
         for (let o = 0, ol = groups.length; o < ol; ++o) {
-          const group = groups[o];
-          const start = group.start;
-          const count = group.count;
+          const group2 = groups[o];
+          const start = group2.start;
+          const count = group2.count;
           for (let i = start, l = start + count; i < l; i += 3) {
             for (let j = 0; j < 3; j++) {
               const edge1 = indices.getX(i + j);
@@ -22544,8 +22544,8 @@
       const groups = json.data.groups || json.data.drawcalls || json.data.offsets;
       if (groups !== void 0) {
         for (let i = 0, n = groups.length; i !== n; ++i) {
-          const group = groups[i];
-          geometry.addGroup(group.start, group.count, group.materialIndex);
+          const group2 = groups[i];
+          geometry.addGroup(group2.start, group2.count, group2.materialIndex);
         }
       }
       const boundingSphere = json.data.boundingSphere;
@@ -28963,6 +28963,137 @@
     }
   }
 
+  // viewer/js/Renderer_Estimated.js
+  var CELL = 8;
+  var MIN_SAMPLES = 1;
+  var GROUNDED_DY = 0.5;
+  var GROUND_PERCENTILE = 0.25;
+  var enabled = true;
+  var group = null;
+  function updateButton() {
+    const b = document.getElementById("btn-estmap");
+    if (!b) return;
+    const has = !!group;
+    b.style.display = has ? "" : "none";
+    b.style.background = enabled ? "rgba(0, 212, 255, 0.5)" : "rgba(0,0,0,0.5)";
+  }
+  function applyVisibility() {
+    if (group) group.visible = enabled;
+    updateButton();
+  }
+  function setEstimatedEnabled(on) {
+    enabled = on;
+    applyVisibility();
+  }
+  function toggleEstimatedMap() {
+    if (!group) {
+      showToast("\u63A8\u5B9A\u30DE\u30C3\u30D7\u306E\u5143\u306B\u306A\u308B\u9332\u753B\u304C\u3042\u308A\u307E\u305B\u3093", "warning");
+      return;
+    }
+    setEstimatedEnabled(!enabled);
+  }
+  function clearGroup() {
+    if (!group) return;
+    Shared.scene.remove(group);
+    disposeObject(group);
+    group = null;
+  }
+  function makeInstanced(geo, color, positions, scaleFn) {
+    const mat = new THREE.MeshLambertMaterial({ color });
+    const mesh = new THREE.InstancedMesh(geo, mat, positions.length);
+    const m = new THREE.Matrix4();
+    positions.forEach((p, i) => {
+      const s = scaleFn ? scaleFn(p) : [1, 1, 1];
+      m.makeScale(s[0], s[1], s[2]);
+      m.setPosition(p[0], p[1], p[2]);
+      mesh.setMatrixAt(i, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    return mesh;
+  }
+  function buildEstimatedMap() {
+    clearGroup();
+    const hasRealMap = Shared.mapGroup && Shared.mapGroup.children.length > 0;
+    const cells = /* @__PURE__ */ new Map();
+    const frames = Shared.realFrames;
+    const prevY = /* @__PURE__ */ new Map();
+    for (let fi = 0; fi < frames.length; fi++) {
+      for (const p of frames[fi].players) {
+        if (!p.pos) continue;
+        const [x, y, z] = p.pos;
+        const py2 = prevY.get(p.id);
+        prevY.set(p.id, p.health === 0 ? void 0 : y);
+        if (p.health === 0 || py2 === void 0) continue;
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        if (Math.abs(y - py2) > GROUNDED_DY) continue;
+        const key = Math.floor(x / CELL) + "," + Math.floor(z / CELL);
+        let c = cells.get(key);
+        if (!c) {
+          c = { cx: Math.floor(x / CELL), cz: Math.floor(z / CELL), ys: [] };
+          cells.set(key, c);
+        }
+        c.ys.push(y);
+      }
+    }
+    const tiles = [];
+    let minY = Infinity, maxY = -Infinity;
+    cells.forEach((c) => {
+      if (c.ys.length < MIN_SAMPLES) return;
+      c.ys.sort((a, b) => a - b);
+      const y = c.ys[Math.floor((c.ys.length - 1) * GROUND_PERCENTILE)];
+      tiles.push({ x: (c.cx + 0.5) * CELL, y, z: (c.cz + 0.5) * CELL });
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    });
+    const hints = Shared.mapHints || { impacts: [], flags: [], spawns: [] };
+    if (tiles.length === 0 && hints.impacts.length === 0) {
+      updateButton();
+      return;
+    }
+    group = new THREE.Group();
+    if (tiles.length > 0) {
+      const baseY = minY - 2;
+      const mesh = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshLambertMaterial({ color: 16777215 }),
+        tiles.length
+      );
+      const m = new THREE.Matrix4();
+      const col = new THREE.Color();
+      const range = Math.max(1, maxY - minY);
+      tiles.forEach((t, i) => {
+        const h = Math.max(1.5, t.y - baseY);
+        m.makeScale(CELL - 0.6, h, CELL - 0.6);
+        m.setPosition(t.x, t.y - h / 2, t.z);
+        mesh.setMatrixAt(i, m);
+        col.setHSL(0.58, 0.45, 0.2 + 0.4 * ((t.y - minY) / range));
+        mesh.setColorAt(i, col);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      group.add(mesh);
+    }
+    if (hints.impacts.length > 0) {
+      group.add(makeInstanced(new THREE.BoxGeometry(1.2, 1.2, 1.2), 16750916, hints.impacts));
+    }
+    if (hints.spawns.length > 0) {
+      const seen = /* @__PURE__ */ new Set();
+      const spawns = hints.spawns.filter((s) => {
+        const k = Math.round(s[0] / 4) + "," + Math.round(s[1] / 4) + "," + Math.round(s[2] / 4);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      group.add(makeInstanced(new THREE.BoxGeometry(3, 0.6, 3), 4521864, spawns));
+    }
+    if (hints.flags.length > 0) {
+      group.add(makeInstanced(new THREE.CylinderGeometry(0.8, 0.8, 30, 8), 16772676, hints.flags.map((f) => [f[0], f[1] + 15, f[2]])));
+    }
+    Shared.scene.add(group);
+    enabled = !hasRealMap;
+    applyVisibility();
+  }
+
   // viewer/js/UI.js
   function showToast(message, type = "error") {
     const container = document.getElementById("toast-container");
@@ -29031,6 +29162,7 @@
     bind("cam-free", () => setCameraMode("free"));
     bind("cam-1st", () => setCameraMode("1st"));
     bind("cam-3rd", () => setCameraMode("3rd"));
+    bind("btn-estmap", () => toggleEstimatedMap());
     updateCamBtns();
     document.addEventListener("click", (e) => {
       const t = e.target;
@@ -29091,6 +29223,9 @@
           break;
         case "Digit3":
           setCameraMode("3rd");
+          break;
+        case "KeyM":
+          toggleEstimatedMap();
           break;
         case "ArrowRight":
           State.time = Math.min(State.duration, State.time + 5);
@@ -29180,33 +29315,33 @@
     return BODY_MATS[key];
   }
   function createPlayerMesh(team = 0) {
-    const group = new THREE.Group();
+    const group2 = new THREE.Group();
     const mat = bodyMaterial(team);
     const torso = new THREE.Mesh(TORSO_GEO, mat);
     torso.position.y = 7.75;
-    group.add(torso);
+    group2.add(torso);
     const armL = new THREE.Mesh(ARM_GEO, mat);
     armL.position.set(-2.6, 10, 0);
     const armR = new THREE.Mesh(ARM_GEO, mat);
     armR.position.set(2.6, 10, 0);
-    group.add(armL, armR);
+    group2.add(armL, armR);
     const legL = new THREE.Mesh(LEG_GEO, LEG_MAT);
     legL.position.set(-1, 5, 0);
     const legR = new THREE.Mesh(LEG_GEO, LEG_MAT);
     legR.position.set(1, 5, 0);
-    group.add(legL, legR);
+    group2.add(legL, legR);
     const head = new THREE.Mesh(HEAD_GEO, HEAD_MAT);
     head.position.y = 11.5;
-    group.add(head);
+    group2.add(head);
     const sightMesh = new THREE.Mesh(SIGHT_GEO, SIGHT_MAT);
     sightMesh.position.set(0, 11.5, -7.5);
-    group.add(sightMesh);
-    group.userData.team = team;
-    group.userData.teamParts = [torso, armL, armR];
-    group.userData.legs = [legL, legR];
-    group.userData.arms = [armL, armR];
-    group.userData.walkCycle = 0;
-    return group;
+    group2.add(sightMesh);
+    group2.userData.team = team;
+    group2.userData.teamParts = [torso, armL, armR];
+    group2.userData.legs = [legL, legR];
+    group2.userData.arms = [armL, armR];
+    group2.userData.walkCycle = 0;
+    return group2;
   }
   function setMeshTeam(mesh, team) {
     if (mesh.userData.team === team) return;
@@ -29636,6 +29771,7 @@
     Shared.currentMapName = mapData.name;
     showToast(`\u30DE\u30C3\u30D7\u30ED\u30FC\u30C9: ${mapData.name}`, "success");
     clearMapGroup();
+    setEstimatedEnabled(false);
     const palette = mapData.colors || [];
     const boxes = [];
     if (Array.isArray(mapData.xyz)) {
@@ -30728,6 +30864,8 @@
     }
     Shared.realFrames = [];
     Shared.events = [];
+    const hints = { impacts: [], flags: [], spawns: [] };
+    Shared.mapHints = hints;
     Shared.seenProjectileIds = /* @__PURE__ */ new Set();
     const playersMap = {};
     let maxTime = 0;
@@ -30781,6 +30919,9 @@
             playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, aim: false, isValid: false };
           }
           const p = playersMap[sid];
+          if (typeof pArr[i + 2] === "number" && typeof pArr[i + 4] === "number" && (pArr[i + 2] || pArr[i + 3] || pArr[i + 4])) {
+            hints.spawns.push([pArr[i + 2], pArr[i + 3], pArr[i + 4]]);
+          }
           if (typeof pArr[i + 5] === "string" && pArr[i + 5]) {
             p.name = pArr[i + 5];
             if (localName && p.name === localName) localId = sid;
@@ -30793,6 +30934,19 @@
           if (typeof pArr[i + 7] === "number" && pArr[i + 7] > 0) p.maxHealth = pArr[i + 7];
           if (typeof pArr[i + 8] === "number") p.health = pArr[i + 8];
           if (pArr[i + 9] === 1 || pArr[i + 9] === 2) p.team = pArr[i + 9];
+        }
+      } else if (op === "9" && !ev[2] && Array.isArray(payload[1]) && payload[1].length >= 4) {
+        const a = payload[1];
+        if ([1, 2, 3].every((k) => typeof a[k] === "number")) hints.impacts.push([a[1], a[2], a[3]]);
+      } else if (op === "pre" && [2, 3, 4].every((k) => typeof payload[k] === "number")) {
+        hints.impacts.push([payload[2], payload[3], payload[4]]);
+      } else if (op === "init") {
+        for (const part of payload) {
+          if (part && typeof part === "object" && !Array.isArray(part) && Array.isArray(part.flg)) {
+            for (const f of part.flg) {
+              if (Array.isArray(f) && [1, 2, 3].every((k) => typeof f[k] === "number")) hints.flags.push([f[1], f[2], f[3]]);
+            }
+          }
         }
       } else if (op === "k" && payload[1]) {
         const pArr = payload[1];
@@ -31063,6 +31217,7 @@
       State.time = 0;
       State.mode = "real";
       setupRealPlayers();
+      buildEstimatedMap();
       showToast(`\u30ED\u30FC\u30C9\u5B8C\u4E86: ${Shared.realFrames.length} \u30D5\u30EC\u30FC\u30E0 / ${Object.keys(playersMap).length} \u30D7\u30EC\u30A4\u30E4\u30FC`, "success");
       const landingModal = document.getElementById("landing-modal");
       if (landingModal) landingModal.classList.remove("active");

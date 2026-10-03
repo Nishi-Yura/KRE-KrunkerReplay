@@ -1,6 +1,7 @@
 import { State, Shared, base64ToUint8Array } from './State.js';
 import { showToast } from './UI.js';
 import { setupRealPlayers } from './Renderer_Players.js';
+import { buildEstimatedMap } from './Renderer_Estimated.js';
 import { parseMapData } from './Parser_Map.js';
 import { decodeMulti } from '@msgpack/msgpack';
 
@@ -54,6 +55,9 @@ export function parseJSONLog(input) {
 
     Shared.realFrames = [];
     Shared.events = [];
+    // マップが取れない録画向けに、通信から拾えるマップの手がかりを集める (推定マップ用)
+    const hints = { impacts: [], flags: [], spawns: [] };
+    Shared.mapHints = hints;
     Shared.seenProjectileIds = new Set();
     const playersMap = {};
     let maxTime = 0;
@@ -119,6 +123,9 @@ export function parseJSONLog(input) {
                     playersMap[sid] = { id: sid, name: `Guest_${sid}`, team: 0, pos: [0, 0, 0], rot: [0, 0], health: 100, maxHealth: 100, hasSpawned: false, shoot: false, aim: false, isValid: false };
                 }
                 const p = playersMap[sid];
+                if (typeof pArr[i + 2] === 'number' && typeof pArr[i + 4] === 'number' && (pArr[i + 2] || pArr[i + 3] || pArr[i + 4])) {
+                    hints.spawns.push([pArr[i + 2], pArr[i + 3], pArr[i + 4]]);
+                }
                 if (typeof pArr[i + 5] === 'string' && pArr[i + 5]) {
                     p.name = pArr[i + 5];
                     if (localName && p.name === localName) localId = sid;
@@ -131,6 +138,26 @@ export function parseJSONLog(input) {
                 if (typeof pArr[i + 7] === 'number' && pArr[i + 7] > 0) p.maxHealth = pArr[i + 7];
                 if (typeof pArr[i + 8] === 'number') p.health = pArr[i + 8];
                 if (pArr[i + 9] === 1 || pArr[i + 9] === 2) p.team = pArr[i + 9];
+            }
+        }
+        // ===== 9-packet: 命中 [shooter, hitX, hitY, hitZ, ?, ?, ?, shooterX, shooterY, ?, shooterZ, ...] =====
+        // 着弾点は壁・床・段差の表面上にあるので、マップ推定の点群に使う
+        else if (op === '9' && !ev[2] && Array.isArray(payload[1]) && payload[1].length >= 4) {
+            const a = payload[1];
+            if ([1, 2, 3].every(k => typeof a[k] === 'number')) hints.impacts.push([a[1], a[2], a[3]]);
+        }
+        // ===== pre-packet: 弾の着弾 [?, ?, x, y, z, ?] =====
+        else if (op === 'pre' && [2, 3, 4].every(k => typeof payload[k] === 'number')) {
+            hints.impacts.push([payload[2], payload[3], payload[4]]);
+        }
+        // ===== init: 旗などの目標物の位置 =====
+        else if (op === 'init') {
+            for (const part of payload) {
+                if (part && typeof part === 'object' && !Array.isArray(part) && Array.isArray(part.flg)) {
+                    for (const f of part.flg) {
+                        if (Array.isArray(f) && [1, 2, 3].every(k => typeof f[k] === 'number')) hints.flags.push([f[1], f[2], f[3]]);
+                    }
+                }
             }
         }
         // ===== k-packet: Player position/state updates =====
@@ -456,6 +483,7 @@ export function parseJSONLog(input) {
         State.time = 0;
         State.mode = 'real';
         setupRealPlayers();
+        buildEstimatedMap();
         showToast(`ロード完了: ${Shared.realFrames.length} フレーム / ${Object.keys(playersMap).length} プレイヤー`, 'success');
         const landingModal = document.getElementById('landing-modal');
         if (landingModal) landingModal.classList.remove('active');
